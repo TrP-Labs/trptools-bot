@@ -41,10 +41,15 @@ export async function announceUpcoming(client: Client, guild: Guild, shift: Shif
         .setFooter({ text: guild.groupName })
 
     try {
-        await channel.send({
+        const message = await channel.send({
             content: mentionRole(guild.config.shiftPingRole) || undefined,
             embeds: [embed],
             components: [websiteButton(guild, shift)]
+        })
+
+        await state.rememberNotice(shift.eventId, shift.start, 'upcoming', {
+            channelId: channel.id,
+            messageId: message.id
         })
 
         return { ok: true, channelId: channel.id }
@@ -187,10 +192,15 @@ export async function remindHost(client: Client, guild: Guild, shift: Shift): Pr
         .setFooter({ text: guild.groupName })
 
     try {
-        await channel.send({
+        const message = await channel.send({
             content: mentionRole(guild.config.hostPingRole) || undefined,
             embeds: [embed],
             components: [websiteButton(guild, shift)]
+        })
+
+        await state.rememberNotice(shift.eventId, shift.start, 'host', {
+            channelId: channel.id,
+            messageId: message.id
         })
 
         return { ok: true, channelId: channel.id }

@@ -34,6 +34,18 @@ const sheetField = (signupId: string) => `sheet:${signupId}`
 const ANNOUNCEMENT_FIELD = 'announcement'
 const MANIFEST_FIELD = 'manifest'
 
+/**
+ * The upcoming notice and the host reminder.
+ *
+ * These get their own fields rather than sharing the announcement's, because
+ * the manifest replies to whatever `findAnnouncement` returns — but they are
+ * still recorded, so closing the shift out clears them. A "this shift is
+ * coming up" post left behind after the shift has run is exactly the clutter
+ * `/complete` exists to remove.
+ */
+const NOTICE_FIELDS = { upcoming: 'upcoming', host: 'host' } as const
+export type NoticeKind = keyof typeof NOTICE_FIELDS
+
 async function put(eventId: string, occurrence: string, field: string, value: PostedMessage) {
     if (!redis) return
 
@@ -69,6 +81,9 @@ export const state = {
 
     rememberAnnouncement: (eventId: string, occurrence: string, message: PostedMessage) =>
         put(eventId, occurrence, ANNOUNCEMENT_FIELD, message),
+
+    rememberNotice: (eventId: string, occurrence: string, kind: NoticeKind, message: PostedMessage) =>
+        put(eventId, occurrence, NOTICE_FIELDS[kind], message),
 
     findAnnouncement: (eventId: string, occurrence: string) => get(eventId, occurrence, ANNOUNCEMENT_FIELD),
 
