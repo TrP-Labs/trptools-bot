@@ -40,7 +40,8 @@ Two things are deliberately *not* the bot's job:
 | `/status` | What this server is set up to do, and what is coming up. |
 | `/announce` | Announce the next scheduled shift. |
 | `/signups` | Post the staff sign-up sheets for the next shift. |
-| `/begin` | Announce that the shift is starting, ping everyone who signed up, and post the dispatch board. |
+| `/staff-begin` | Give the staff who signed up the join code, ahead of the public announcement. |
+| `/begin` | Announce publicly that the shift is starting, and post the dispatch board. |
 | `/complete` | Clear the sheets this shift posted and ask how it went. |
 | `/edit-shift` | Set the note and private-server owner for the next shift. |
 
@@ -57,6 +58,12 @@ takes it, picking it again gives it up, and picking a different one moves you.
 Sign-ups made on the website appear in the Discord message within seconds, and
 the other way round — both halves are the same rows in the same table.
 
+Signing up earns **early access**: `/staff-begin` sends the join code to the
+people who claimed a slot, in their own sheet's channel, before `/begin`
+announces the shift to everyone. That is the point of the sheet — dispatchers
+and maintenance are meant to be in position before the public arrives — so the
+public announcement never pings sign-ups.
+
 Somebody who signs up from Discord **does not need a TrP Tools account**. The
 sheet already lives in a channel their Discord role gates, so demanding they
 register first would make the Discord half useless. If they later link a Discord
@@ -72,6 +79,7 @@ dashboard:
 | Announce upcoming | before the start |
 | Post sign-up sheets | before the start |
 | Remind the host | before the start |
+| Let staff in | before the start |
 | Announce the start | before the start |
 | Close the shift out | after the end |
 

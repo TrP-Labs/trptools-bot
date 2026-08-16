@@ -3,7 +3,7 @@ import { api, type DueAction, type Guild } from '../api'
 import { env } from '../env'
 import { log } from '../log'
 import { state } from '../state'
-import { announceStart, announceToStaff, announceUpcoming, remindHost } from './announcements'
+import { announceStart, announceUpcoming, letStaffIn, remindHost } from './announcements'
 import { clearShiftMessages, postPoll } from './completion'
 import { postManifest, refreshManifest } from './manifest'
 import { postSheets } from './signups'
@@ -51,14 +51,30 @@ async function carryOut(client: Client, action: DueAction, guild: Guild): Promis
             return result.ok
         }
 
+        case 'STAFF_START': {
+            // Whatever code a host already gave for this occurrence. There
+            // usually is not one this early, and the link still works without
+            // it — it just opens the group's default server.
+            const code = await state.findCode(target.eventId, target.start)
+            const result = await letStaffIn(client, guild, occurrence, code)
+
+            // Nobody signed up is a fine outcome, not a failure to retry.
+            if (result.notified.length === 0 && result.skipped.length > 0) {
+                log.info('automation', `staff start let nobody in: ${result.skipped.join(', ')}`)
+            }
+
+            return true
+        }
+
         case 'BEGIN': {
-            const announced = await announceStart(client, guild, target)
+            const code = await state.findCode(target.eventId, target.start)
+            const announced = await announceStart(client, guild, target, code)
+
             if (!announced.ok) {
                 log.warn('automation', `start announcement failed: ${announced.reason}`)
                 return false
             }
 
-            if (guild.config.signupsEnabled) await announceToStaff(client, guild, occurrence)
             if (guild.config.manifestEnabled) await postManifest(client, guild, target)
 
             return true

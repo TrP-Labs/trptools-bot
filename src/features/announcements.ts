@@ -7,7 +7,7 @@ import { state } from '../state'
 
 /**
  * Shift announcements: the upcoming notice, the "starting now" post with its
- * join link, and the ping that tells signed-up staff to come in.
+ * join link, and the earlier ping that lets signed-up staff into the server.
  */
 
 /**
@@ -120,12 +120,17 @@ export async function announceStart(
 }
 
 /**
- * Tells the people who signed up that the server is open.
+ * Lets the people who signed up into the server.
  *
- * Posted into each sheet's own channel and pinging its own sign-ups, so a
- * driver is not notified by the dispatcher sheet and vice versa.
+ * This is what signing up buys: the join code goes to the staff who claimed a
+ * slot, ahead of the public announcement, so dispatchers and maintenance are in
+ * position before anyone else arrives. It is deliberately not part of the start
+ * announcement — the two happen at different times, from different commands.
+ *
+ * Posted into each sheet's own channel and pinging only its own sign-ups, so a
+ * dispatcher is not notified by the maintenance sheet and vice versa.
  */
-export async function announceToStaff(
+export async function letStaffIn(
     client: Client,
     guild: Guild,
     occurrence: Occurrence,
@@ -134,6 +139,7 @@ export async function announceToStaff(
     const notified: string[] = []
     const skipped: string[] = []
     const link = joinLink(guild, occurrence.shift, code)
+    const started = new Date(occurrence.shift.start).getTime() <= Date.now()
 
     for (const sheet of occurrence.sheets) {
         const people = sheet.slots.flatMap((slot) =>
@@ -153,10 +159,13 @@ export async function announceToStaff(
 
         const embed = new EmbedBuilder()
             .setColor(colorOf(sheet.color))
-            .setTitle(`${sheet.name} — the shift is starting`)
+            .setTitle(`${sheet.name} — the server is open`)
             .setDescription(
                 [
-                    `**${occurrence.shift.name}** starts ${timestamp(occurrence.shift.start, 'R')}.`,
+                    started
+                        ? `**${occurrence.shift.name}** is running now.`
+                        : `**${occurrence.shift.name}** starts ${timestamp(occurrence.shift.start, 'R')}. ` +
+                          'You are on it, so come in and get set up.',
                     `[Click here to join](${link})${code ? `, or use the code **${code}**` : ''}`
                 ].join('\n\n')
             )
@@ -167,14 +176,26 @@ export async function announceToStaff(
                     inline: true
                 }))
             )
+            .setFooter({
+                text: started
+                    ? 'Please keep the join code to the staff on this shift.'
+                    : 'You are in before the public announcement — please keep the code to yourselves.'
+            })
 
         try {
-            await channel.send({
+            const message = await channel.send({
                 // A real mention outside the embed, since Discord does not
                 // notify anyone for a mention that only appears inside one.
                 content: people.map((entry) => mentionPerson(entry.person)).join(' '),
                 embeds: [embed]
             })
+
+            await state.rememberStaffPing(
+                occurrence.shift.eventId,
+                occurrence.shift.start,
+                sheet.signupId,
+                { channelId: channel.id, messageId: message.id }
+            )
 
             notified.push(sheet.name)
         } catch (error) {

@@ -2,13 +2,20 @@ import { PermissionFlagsBits, SlashCommandBuilder } from 'discord.js'
 import { api } from '../api'
 import type { Command } from '../discord/registry'
 import { reply } from '../discord/registry'
-import { announceStart, announceToStaff } from '../features/announcements'
+import { announceStart } from '../features/announcements'
 import { postManifest } from '../features/manifest'
+import { state } from '../state'
 
+/**
+ * The public "we are open" announcement.
+ *
+ * It does not touch sign-ups. Staff who claimed a slot are let in earlier, by
+ * `/staff-begin`, which is the point of signing up in the first place.
+ */
 export const command: Command = {
     data: new SlashCommandBuilder()
         .setName('begin')
-        .setDescription('Announce that the shift is starting, and tell the staff who signed up.')
+        .setDescription('Announce publicly that the shift is starting.')
         .addStringOption((option) =>
             option
                 .setName('code')
@@ -20,8 +27,6 @@ export const command: Command = {
 
     async execute({ interaction, client, guild }) {
         await interaction.deferReply()
-
-        const code = interaction.options.getString('code')
 
         // The shift that is running now, falling back to the next one so a
         // host starting a few minutes early is not told there is nothing on.
@@ -51,6 +56,13 @@ export const command: Command = {
             return
         }
 
+        // Falls back to whatever `/staff-begin` was given, so the host types
+        // the code once per shift rather than once per command.
+        const code =
+            interaction.options.getString('code') ?? (await state.findCode(shift.eventId, shift.start))
+
+        if (code) await state.rememberCode(shift.eventId, shift.start, code)
+
         const announced = await announceStart(client, guild, shift, code)
 
         // The public announcement is the whole point of the command. If it did
@@ -70,19 +82,17 @@ export const command: Command = {
 
         const results = [`Announced in <#${announced.channelId}>.`]
 
-        const occurrence = await api.occurrence(guild.guildId, shift.eventId, shift.start)
+        // Staff are let in by `/staff-begin`, normally well before this. Say so
+        // if that has not happened, since it is easy to reach for `/begin`
+        // alone and leave the people who signed up waiting outside.
+        if (guild.config.signupsEnabled && guild.sheets.length > 0) {
+            const already = await state.staffPinged(shift.eventId, shift.start)
 
-        if (!occurrence) {
-            results.push('Could not read the sign-ups for this shift, so nobody was pinged.')
-        } else if (!guild.config.signupsEnabled) {
-            results.push('Sign-up sheets are switched off, so nobody was pinged.')
-        } else if (occurrence.sheets.length === 0) {
-            results.push('No rank has a sign-up sheet, so there was nobody to ping.')
-        } else {
-            const staff = await announceToStaff(client, guild, occurrence, code)
-
-            if (staff.notified.length > 0) results.push(`Pinged sign-ups in: ${staff.notified.join(', ')}.`)
-            if (staff.skipped.length > 0) results.push(`Skipped: ${staff.skipped.join(', ')}.`)
+            results.push(
+                already
+                    ? 'Staff who signed up were already let in.'
+                    : 'Staff who signed up have not been let in — run `/staff-begin` to do that.'
+            )
         }
 
         // The board is genuinely optional: most shifts start before anybody
