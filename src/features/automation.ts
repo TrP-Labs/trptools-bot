@@ -18,11 +18,9 @@ import { postSheets } from './signups'
  */
 
 async function carryOut(client: Client, action: DueAction, guild: Guild): Promise<boolean> {
-    const shift = await api.shift(guild.guildId, action.action === 'COMPLETE' ? 'current' : 'next')
-
-    // The occurrence is named in the action, so the shift the API happens to
-    // consider "next" right now is only a starting point — the real subject is
-    // fetched by id below.
+    // Always fetched by id and occurrence, never by "what is next right now" —
+    // an action queued a few minutes ago must still act on the shift it was
+    // queued for, not on whichever one has since become the soonest.
     const occurrence = await api.occurrence(guild.guildId, action.eventId, action.occurrence)
     if (!occurrence) {
         log.warn('automation', `${action.action}: occurrence has gone away`)
@@ -76,9 +74,6 @@ async function carryOut(client: Client, action: DueAction, guild: Guild): Promis
         default:
             return true
     }
-
-    // `shift` is read above only so a failure log can name what is running.
-    void shift
 }
 
 async function tick(client: Client) {

@@ -14,23 +14,33 @@ export type CommandData =
     | SlashCommandSubcommandsOnlyBuilder
     | Omit<SlashCommandBuilder, 'addSubcommand' | 'addSubcommandGroup'>
 
-export interface Command {
+/**
+ * A command that needs its server connected to a TrP Tools group, which is
+ * nearly all of them. The dispatcher resolves the group once and refuses the
+ * command with an explanation when there is none.
+ */
+export interface GuildCommand {
     data: CommandData
-    /**
-     * Whether the command needs a configured guild.
-     *
-     * Nearly everything does, and the one that does not — /ping — exists
-     * precisely so somebody can tell a misconfigured bot from a dead one.
-     */
-    needsGuild?: false
+    needsGuild?: true
+    execute: (context: CommandContext & { guild: Guild }) => Promise<void>
+}
+
+/**
+ * A command that works on any server. Only `/ping`, which exists precisely so
+ * somebody can tell a misconfigured bot from a dead one — and so must run
+ * before there is anything to configure.
+ */
+export interface OpenCommand {
+    data: CommandData
+    needsGuild: false
     execute: (context: CommandContext) => Promise<void>
 }
+
+export type Command = GuildCommand | OpenCommand
 
 export interface CommandContext {
     interaction: ChatInputCommandInteraction
     client: Client
-    /** Present unless the command declared `needsGuild: false`. */
-    guild: Guild
 }
 
 export interface ComponentHandler {

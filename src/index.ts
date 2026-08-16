@@ -51,7 +51,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             // Every command but /ping needs to know which group it is acting
             // for, and resolving it once here keeps that check out of each.
             if (command.needsGuild === false) {
-                await command.execute({ interaction, client, guild: undefined as never })
+                await command.execute({ interaction, client })
                 return
             }
 
