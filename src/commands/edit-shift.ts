@@ -29,7 +29,12 @@ export const command: Command = {
 
         if (!shift) {
             await interaction.reply({
-                embeds: [reply.error('There is no shift running or coming up to edit.')],
+                embeds: [
+                    reply.error(
+                        'There is no shift running or coming up to edit. Add one at ' +
+                            `${guild.siteUrl}/dashboard/${guild.groupSlug}/shifts.`
+                    )
+                ],
                 ...EPHEMERAL
             })
             return

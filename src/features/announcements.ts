@@ -10,11 +10,20 @@ import { state } from '../state'
  * join link, and the ping that tells signed-up staff to come in.
  */
 
+/**
+ * The link out to a shift's page.
+ *
+ * Deliberately not "sign up": an announcement goes to everyone, and sign-ups
+ * exist only for the few staff roles a group has built a sheet for —
+ * dispatchers, maintenance. Telling every driver to sign up sends them to a
+ * page with nothing on it for them. The sheets themselves say "sign up",
+ * because that is what they are.
+ */
 function websiteButton(guild: Guild, shift: Shift) {
     return new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
             .setStyle(ButtonStyle.Link)
-            .setLabel('Sign up on the website')
+            .setLabel('View on the website')
             .setURL(shiftUrl(guild, shift))
     )
 }

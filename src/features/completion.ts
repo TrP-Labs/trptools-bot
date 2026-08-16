@@ -21,26 +21,48 @@ const POLL_ANSWERS = [
     { text: 'I hated it', emoji: '💔' }
 ]
 
-export async function clearShiftMessages(client: Client, shift: Shift): Promise<number> {
+export type ClearResult = {
+    removed: number
+    /**
+     * Messages that were still there and could not be deleted, which almost
+     * always means the bot lost Manage Messages. Counted apart from the ones
+     * already gone, so a command can tell somebody to check permissions rather
+     * than reporting a clean sweep that did not happen.
+     */
+    failed: number
+    tracked: number
+}
+
+export async function clearShiftMessages(client: Client, shift: Shift): Promise<ClearResult> {
     const posted = await state.allFor(shift.eventId, shift.start)
     let removed = 0
+    let failed = 0
 
     for (const entry of posted) {
         try {
             const channel = await client.channels.fetch(entry.channelId)
-            if (!channel?.isTextBased()) continue
+            if (!channel?.isTextBased()) {
+                failed++
+                continue
+            }
 
-            const message = await channel.messages.fetch(entry.messageId)
+            const message = await channel.messages.fetch(entry.messageId).catch(() => null)
+
+            // Already deleted by hand is a success, not a failure — there is
+            // nothing left to do about it either way.
+            if (!message) continue
+
             await message.delete()
             removed++
-        } catch {
-            // Already gone, or no longer ours to delete. Either is fine.
+        } catch (error) {
+            log.warn('complete', 'could not delete a message', error)
+            failed++
         }
     }
 
     await state.forget(shift.eventId, shift.start)
 
-    return removed
+    return { removed, failed, tracked: posted.length }
 }
 
 export async function postPoll(client: Client, guild: Guild, shift: Shift): Promise<boolean> {

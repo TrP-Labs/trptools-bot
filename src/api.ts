@@ -82,6 +82,9 @@ export type Shift = {
     end: string
     note: string
     ownerRobloxId: string | null
+    /** When the group's sign-up window opens, and whether it is open now. */
+    signupsOpenAt: string
+    signupsOpen: boolean
 }
 
 export type Guild = {
