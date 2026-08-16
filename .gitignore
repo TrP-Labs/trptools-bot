@@ -4,7 +4,7 @@ node_modules
 dist
 *.tsbuildinfo
 
-# Secrets — .env holds the Roblox client secret and the encryption key
+# Secrets — .env holds the Discord bot token and the service token
 .env
 .env.*
 !.env.example

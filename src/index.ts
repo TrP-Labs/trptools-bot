@@ -3,6 +3,7 @@ import { Events } from 'discord.js'
 import { api } from './api'
 import { commands } from './commands'
 import { createClient } from './discord/client'
+import { deployCommandsAtStartup } from './discord/deploy'
 import { EPHEMERAL, reply } from './discord/registry'
 import { startAutomation } from './features/automation'
 import { startSignupSync } from './features/sync'
@@ -86,6 +87,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 client.once(Events.ClientReady, async (ready) => {
     log.info('bot', `signed in as ${ready.user.tag}`)
+
+    // The command list is code, and the write is idempotent, so a deployment
+    // never needs a second step to have working slash commands.
+    await deployCommandsAtStartup()
 
     const guilds = await api.guilds()
     log.info('bot', `${guilds.length} connected group${guilds.length === 1 ? '' : 's'}, in ${ready.guilds.cache.size} server${ready.guilds.cache.size === 1 ? '' : 's'}`)

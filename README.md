@@ -1,6 +1,6 @@
 # trptools-bot
 
-The Discord half of [TrP Tools 2.0](../README.md). It announces shifts,
+The Discord half of [TrP Tools 2.0](https://github.com/TrP-Labs). It announces shifts,
 collects staff sign-ups, runs the post-shift poll and posts a live picture of
 the dispatch board.
 
@@ -93,13 +93,17 @@ should still announce a shift, one that was down for a day should not.
 ```bash
 bun install
 cp .env.example .env        # fill in the Discord and service credentials
-bun run deploy-commands     # only after adding or renaming a command
 bun run dev
 ```
 
+The bot **registers its slash commands on every start**, so a deployment needs
+no second step. `bun run deploy-commands` does the same thing without a restart.
+
 `DEV_GUILD_ID` registers the commands to one server, where they appear at once.
 Without it they register globally and can take an hour to propagate — long
-enough to convince you the bot is broken.
+enough to convince you the bot is broken. Whichever scope is used, the other is
+cleared: Discord shows the union of both, so a command left in the unused scope
+would still be offered with nothing to answer it.
 
 The API needs `DISCORD_APP_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN` and
 the same `BOT_SERVICE_TOKEN`, and the Discord application needs
@@ -130,3 +134,22 @@ bun test src
 
 Covers custom-id encoding, which carries a component's entire state in the 100
 characters Discord allows and has no other safety net.
+
+## Deploying
+
+Images are published to `ghcr.io/trp-labs/trptools-bot` for `linux/amd64` and
+`linux/arm64` on every push to `main` and every release tag.
+
+[trptools-deploy](https://github.com/TrP-Labs/trptools-deploy) runs it alongside
+the rest of a TrP Tools instance:
+
+```bash
+docker compose --profile bot up -d
+```
+
+The bot is optional — nothing else depends on it, and an instance without one
+simply has no server to connect.
+
+## License
+
+MIT — see [LICENSE](./LICENSE).
