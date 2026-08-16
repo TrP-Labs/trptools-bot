@@ -1,33 +1,30 @@
-import { REST, Routes } from 'discord.js'
-import { commands } from './commands'
+import { deployCommands } from './discord/deploy'
 import { env } from './env'
 import { log } from './log'
 
 /**
- * Registers the slash commands with Discord.
+ * Registers the slash commands by hand.
  *
- * Run this after adding or renaming a command; Discord does not learn about
- * them from the gateway connection.
- *
- * With DEV_GUILD_ID set the commands go to that one server and appear at once.
- * Without it they are registered globally, which can take up to an hour to
- * propagate — which is exactly long enough to convince you the bot is broken.
+ * The bot does this for itself on every start, so this is for the times you do
+ * not want to restart it — or want to clear a server's stale guild-scoped
+ * commands by pointing `DEV_GUILD_ID` at it.
  */
-const rest = new REST({ version: '10' }).setToken(env.DISCORD_BOT_TOKEN)
+const { scope, names } = await deployCommands()
 
-const body = commands.map((command) => command.data.toJSON())
-
-const route = env.DEV_GUILD_ID
-    ? Routes.applicationGuildCommands(env.DISCORD_APP_ID, env.DEV_GUILD_ID)
-    : Routes.applicationCommands(env.DISCORD_APP_ID)
-
-await rest.put(route, { body })
-
-log.info(
-    'deploy',
-    `registered ${body.length} commands ${env.DEV_GUILD_ID ? `to guild ${env.DEV_GUILD_ID}` : 'globally'}: ` +
-        body.map((command) => `/${command.name}`).join(', ')
-)
+if (scope === 'guild') {
+    log.info(
+        'deploy',
+        `registered ${names.length} commands to guild ${env.DEV_GUILD_ID} and cleared the global set: ` +
+            names.join(', ')
+    )
+} else {
+    log.info('deploy', `registered ${names.length} commands globally: ${names.join(', ')}`)
+    log.info(
+        'deploy',
+        'Guild-scoped commands are left alone here. If a server still shows stale commands, ' +
+            'set DEV_GUILD_ID to that server and run this again to clear them.'
+    )
+}
 
 // discord.js keeps its REST agent alive, which would hold this one-shot script
 // open forever. The work is done by here, so leave deliberately.

@@ -3,7 +3,7 @@ import { api, type DueAction, type Guild } from '../api'
 import { env } from '../env'
 import { log } from '../log'
 import { state } from '../state'
-import { announceStart, announceToStaff, announceUpcoming, remindHost } from './announcements'
+import { announceStart, announceUpcoming, letStaffIn, remindHost } from './announcements'
 import { clearShiftMessages, postPoll } from './completion'
 import { postManifest, refreshManifest } from './manifest'
 import { postSheets } from './signups'
@@ -18,11 +18,9 @@ import { postSheets } from './signups'
  */
 
 async function carryOut(client: Client, action: DueAction, guild: Guild): Promise<boolean> {
-    const shift = await api.shift(guild.guildId, action.action === 'COMPLETE' ? 'current' : 'next')
-
-    // The occurrence is named in the action, so the shift the API happens to
-    // consider "next" right now is only a starting point — the real subject is
-    // fetched by id below.
+    // Always fetched by id and occurrence, never by "what is next right now" —
+    // an action queued a few minutes ago must still act on the shift it was
+    // queued for, not on whichever one has since become the soonest.
     const occurrence = await api.occurrence(guild.guildId, action.eventId, action.occurrence)
     if (!occurrence) {
         log.warn('automation', `${action.action}: occurrence has gone away`)
@@ -53,14 +51,30 @@ async function carryOut(client: Client, action: DueAction, guild: Guild): Promis
             return result.ok
         }
 
+        case 'STAFF_START': {
+            // Whatever code a host already gave for this occurrence. There
+            // usually is not one this early, and the link still works without
+            // it — it just opens the group's default server.
+            const code = await state.findCode(target.eventId, target.start)
+            const result = await letStaffIn(client, guild, occurrence, code)
+
+            // Nobody signed up is a fine outcome, not a failure to retry.
+            if (result.notified.length === 0 && result.skipped.length > 0) {
+                log.info('automation', `staff start let nobody in: ${result.skipped.join(', ')}`)
+            }
+
+            return true
+        }
+
         case 'BEGIN': {
-            const announced = await announceStart(client, guild, target)
+            const code = await state.findCode(target.eventId, target.start)
+            const announced = await announceStart(client, guild, target, code)
+
             if (!announced.ok) {
                 log.warn('automation', `start announcement failed: ${announced.reason}`)
                 return false
             }
 
-            if (guild.config.signupsEnabled) await announceToStaff(client, guild, occurrence)
             if (guild.config.manifestEnabled) await postManifest(client, guild, target)
 
             return true
@@ -76,9 +90,6 @@ async function carryOut(client: Client, action: DueAction, guild: Guild): Promis
         default:
             return true
     }
-
-    // `shift` is read above only so a failure log can name what is running.
-    void shift
 }
 
 async function tick(client: Client) {

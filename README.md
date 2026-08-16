@@ -1,6 +1,6 @@
 # trptools-bot
 
-The Discord half of [TrP Tools 2.0](../README.md). It announces shifts,
+The Discord half of [TrP Tools 2.0](https://github.com/TrP-Labs). It announces shifts,
 collects staff sign-ups, runs the post-shift poll and posts a live picture of
 the dispatch board.
 
@@ -40,7 +40,8 @@ Two things are deliberately *not* the bot's job:
 | `/status` | What this server is set up to do, and what is coming up. |
 | `/announce` | Announce the next scheduled shift. |
 | `/signups` | Post the staff sign-up sheets for the next shift. |
-| `/begin` | Announce that the shift is starting, ping everyone who signed up, and post the dispatch board. |
+| `/staff-begin` | Give the staff who signed up the join code, ahead of the public announcement. |
+| `/begin` | Announce publicly that the shift is starting, and post the dispatch board. |
 | `/complete` | Clear the sheets this shift posted and ask how it went. |
 | `/edit-shift` | Set the note and private-server owner for the next shift. |
 
@@ -57,6 +58,12 @@ takes it, picking it again gives it up, and picking a different one moves you.
 Sign-ups made on the website appear in the Discord message within seconds, and
 the other way round — both halves are the same rows in the same table.
 
+Signing up earns **early access**: `/staff-begin` sends the join code to the
+people who claimed a slot, in their own sheet's channel, before `/begin`
+announces the shift to everyone. That is the point of the sheet — dispatchers
+and maintenance are meant to be in position before the public arrives — so the
+public announcement never pings sign-ups.
+
 Somebody who signs up from Discord **does not need a TrP Tools account**. The
 sheet already lives in a channel their Discord role gates, so demanding they
 register first would make the Discord half useless. If they later link a Discord
@@ -72,6 +79,7 @@ dashboard:
 | Announce upcoming | before the start |
 | Post sign-up sheets | before the start |
 | Remind the host | before the start |
+| Let staff in | before the start |
 | Announce the start | before the start |
 | Close the shift out | after the end |
 
@@ -85,13 +93,17 @@ should still announce a shift, one that was down for a day should not.
 ```bash
 bun install
 cp .env.example .env        # fill in the Discord and service credentials
-bun run deploy-commands     # only after adding or renaming a command
 bun run dev
 ```
 
+The bot **registers its slash commands on every start**, so a deployment needs
+no second step. `bun run deploy-commands` does the same thing without a restart.
+
 `DEV_GUILD_ID` registers the commands to one server, where they appear at once.
 Without it they register globally and can take an hour to propagate — long
-enough to convince you the bot is broken.
+enough to convince you the bot is broken. Whichever scope is used, the other is
+cleared: Discord shows the union of both, so a command left in the unused scope
+would still be offered with nothing to answer it.
 
 The API needs `DISCORD_APP_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN` and
 the same `BOT_SERVICE_TOKEN`, and the Discord application needs
@@ -122,3 +134,22 @@ bun test src
 
 Covers custom-id encoding, which carries a component's entire state in the 100
 characters Discord allows and has no other safety net.
+
+## Deploying
+
+Images are published to `ghcr.io/trp-labs/trptools-bot` for `linux/amd64` and
+`linux/arm64` on every push to `main` and every release tag.
+
+[trptools-deploy](https://github.com/TrP-Labs/trptools-deploy) runs it alongside
+the rest of a TrP Tools instance:
+
+```bash
+docker compose --profile bot up -d
+```
+
+The bot is optional — nothing else depends on it, and an instance without one
+simply has no server to connect.
+
+## License
+
+MIT — see [LICENSE](./LICENSE).

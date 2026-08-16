@@ -6,6 +6,7 @@ import { command as complete } from './complete'
 import { command as editShift } from './edit-shift'
 import { command as ping } from './ping'
 import { command as signups } from './signups'
+import { command as staffBegin } from './staff-begin'
 import { command as status } from './status'
 
 /**
@@ -16,4 +17,13 @@ import { command as status } from './status'
  * ruled out bundling the bot into a single file. An explicit list is checked
  * by the compiler and works anywhere.
  */
-export const commands: Command[] = [ping, status, announce, signups, begin, complete, editShift]
+export const commands: Command[] = [
+    ping,
+    status,
+    announce,
+    signups,
+    staffBegin,
+    begin,
+    complete,
+    editShift
+]

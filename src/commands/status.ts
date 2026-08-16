@@ -33,6 +33,7 @@ export const command: Command = {
             ['Announce upcoming', config.autoAnnounce, `${config.autoAnnounceLead} min before`],
             ['Post sign-ups', config.autoSignups, `${config.autoSignupsLead} min before`],
             ['Remind the host', config.autoHostReminder, `${config.autoHostReminderLead} min before`],
+            ['Let staff in', config.autoStaffStart, `${config.autoStaffStartLead} min before`],
             ['Announce the start', config.autoBegin, `${config.autoBeginLead} min before`],
             ['Close out', config.autoComplete, `${config.autoCompleteDelay} min after the end`]
         ] as const

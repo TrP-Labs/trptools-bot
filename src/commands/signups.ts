@@ -22,7 +22,12 @@ export const command: Command = {
 
         if (!guild.config.signupsEnabled) {
             await interaction.editReply({
-                embeds: [reply.error('Sign-up sheets are switched off for this group. Turn them on in the dashboard.')]
+                embeds: [
+                    reply.error(
+                        'Sign-up sheets are switched off for this group. Turn them on at ' +
+                            `${guild.siteUrl}/dashboard/${guild.groupSlug}/bot.`
+                    )
+                ]
             })
             return
         }
@@ -30,7 +35,27 @@ export const command: Command = {
         const shift = await api.shift(guild.guildId, 'next')
         if (!shift) {
             await interaction.editReply({
-                embeds: [reply.error('There is no upcoming shift to open sign-ups for.')]
+                embeds: [
+                    reply.error(
+                        'There is no upcoming shift to open sign-ups for. Add one at ' +
+                            `${guild.siteUrl}/dashboard/${guild.groupSlug}/shifts.`
+                    )
+                ]
+            })
+            return
+        }
+
+        // Posting before the group's window opens would give people a form
+        // whose website half refuses them, which reads as a broken bot.
+        if (!shift.signupsOpen) {
+            await interaction.editReply({
+                embeds: [
+                    reply.error(
+                        `Sign-ups for **${shift.name}** open ${timestamp(shift.signupsOpenAt, 'R')} ` +
+                            `(${timestamp(shift.signupsOpenAt, 'F')}).\n\n` +
+                            'Change how far ahead they open in group settings on the website.'
+                    )
+                ]
             })
             return
         }
@@ -40,7 +65,8 @@ export const command: Command = {
             await interaction.editReply({
                 embeds: [
                     reply.error(
-                        'No rank has a sign-up sheet set up yet. Add one per rank on the Ranks page in the dashboard.'
+                        'No rank has a sign-up sheet set up yet. Sign-ups are per rank — add one at ' +
+                            `${guild.siteUrl}/dashboard/${guild.groupSlug}/ranks.`
                     )
                 ]
             })

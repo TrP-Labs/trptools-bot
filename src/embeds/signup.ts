@@ -83,7 +83,7 @@ export function sheetComponents(guild: Guild, shift: Shift, sheet: Sheet) {
 
     const link = new ButtonBuilder()
         .setStyle(ButtonStyle.Link)
-        .setLabel('Open on the website')
+        .setLabel('Sign up on the website')
         .setURL(shiftUrl(guild, shift))
 
     return [

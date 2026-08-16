@@ -32,10 +32,6 @@ type SignupChange = {
  */
 const guildByGroup = new Map<string, string>()
 
-export function rememberGuild(groupId: string, guildId: string) {
-    guildByGroup.set(groupId, guildId)
-}
-
 export function startSignupSync(client: Client) {
     if (!env.REDIS_URL) {
         log.warn('sync', 'REDIS_URL is unset — Discord sheets will not follow website sign-ups')

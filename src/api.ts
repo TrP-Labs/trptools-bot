@@ -36,6 +36,8 @@ export type BotConfig = {
     autoSignupsLead: number
     autoHostReminder: boolean
     autoHostReminderLead: number
+    autoStaffStart: boolean
+    autoStaffStartLead: number
     autoBegin: boolean
     autoBeginLead: number
     autoComplete: boolean
@@ -82,6 +84,9 @@ export type Shift = {
     end: string
     note: string
     ownerRobloxId: string | null
+    /** When the group's sign-up window opens, and whether it is open now. */
+    signupsOpenAt: string
+    signupsOpen: boolean
 }
 
 export type Guild = {
@@ -108,7 +113,7 @@ export type SignupResult = {
 export type DueAction = {
     guildId: string
     groupId: string
-    action: 'ANNOUNCE' | 'SIGNUPS' | 'HOST_REMINDER' | 'BEGIN' | 'COMPLETE'
+    action: 'ANNOUNCE' | 'SIGNUPS' | 'HOST_REMINDER' | 'STAFF_START' | 'BEGIN' | 'COMPLETE'
     eventId: string
     occurrence: string
 }

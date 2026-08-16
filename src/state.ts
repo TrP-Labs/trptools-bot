@@ -30,9 +30,35 @@ const occurrenceKey = (eventId: string, occurrence: string) =>
 
 const sheetField = (signupId: string) => `sheet:${signupId}`
 
+/** The "come on in" post for one sheet, so closing the shift out clears it. */
+const staffField = (signupId: string) => `staff:${signupId}`
+
+/**
+ * The private server code a host typed, remembered for the occurrence.
+ *
+ * Staff are let in before the public announcement goes out, so the code is
+ * given once and then wanted again minutes later by a different command. Asking
+ * the host to retype it is how it ends up mistyped. It lives under its own key
+ * rather than in the message hash, which holds only `channel:message` pairs.
+ */
+const codeKey = (eventId: string, occurrence: string) =>
+    `botcode:${eventId}:${new Date(occurrence).getTime()}`
+
 /** The start announcement, so the manifest can be posted under it and edited. */
 const ANNOUNCEMENT_FIELD = 'announcement'
 const MANIFEST_FIELD = 'manifest'
+
+/**
+ * The upcoming notice and the host reminder.
+ *
+ * These get their own fields rather than sharing the announcement's, because
+ * the manifest replies to whatever `findAnnouncement` returns — but they are
+ * still recorded, so closing the shift out clears them. A "this shift is
+ * coming up" post left behind after the shift has run is exactly the clutter
+ * `/complete` exists to remove.
+ */
+const NOTICE_FIELDS = { upcoming: 'upcoming', host: 'host' } as const
+export type NoticeKind = keyof typeof NOTICE_FIELDS
 
 async function put(eventId: string, occurrence: string, field: string, value: PostedMessage) {
     if (!redis) return
@@ -67,8 +93,42 @@ export const state = {
     findSheet: (eventId: string, occurrence: string, signupId: string) =>
         get(eventId, occurrence, sheetField(signupId)),
 
+    rememberStaffPing: (eventId: string, occurrence: string, signupId: string, message: PostedMessage) =>
+        put(eventId, occurrence, staffField(signupId), message),
+
+    /** Whether any sheet's staff have already been let in for this occurrence. */
+    async staffPinged(eventId: string, occurrence: string): Promise<boolean> {
+        if (!redis) return false
+
+        try {
+            const fields = await redis.hkeys(occurrenceKey(eventId, occurrence))
+            return fields.some((field) => field.startsWith('staff:'))
+        } catch {
+            return false
+        }
+    },
+
     rememberAnnouncement: (eventId: string, occurrence: string, message: PostedMessage) =>
         put(eventId, occurrence, ANNOUNCEMENT_FIELD, message),
+
+    /** Remembers the join code a host gave, for the rest of the occurrence. */
+    async rememberCode(eventId: string, occurrence: string, code: string) {
+        if (!redis) return
+        await redis.set(codeKey(eventId, occurrence), code, 'EX', TTL).catch(() => undefined)
+    },
+
+    async findCode(eventId: string, occurrence: string): Promise<string | null> {
+        if (!redis) return null
+
+        try {
+            return await redis.get(codeKey(eventId, occurrence))
+        } catch {
+            return null
+        }
+    },
+
+    rememberNotice: (eventId: string, occurrence: string, kind: NoticeKind, message: PostedMessage) =>
+        put(eventId, occurrence, NOTICE_FIELDS[kind], message),
 
     findAnnouncement: (eventId: string, occurrence: string) => get(eventId, occurrence, ANNOUNCEMENT_FIELD),
 
@@ -97,7 +157,9 @@ export const state = {
 
     async forget(eventId: string, occurrence: string) {
         if (!redis) return
-        await redis.del(occurrenceKey(eventId, occurrence)).catch(() => undefined)
+        await redis
+            .del(occurrenceKey(eventId, occurrence), codeKey(eventId, occurrence))
+            .catch(() => undefined)
     },
 
     /**

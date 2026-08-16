@@ -17,7 +17,10 @@ export const command: Command = {
         if (!guild.config.announcementsEnabled) {
             await interaction.editReply({
                 embeds: [
-                    reply.error('Shift announcements are switched off for this group. Turn them on in the dashboard.')
+                    reply.error(
+                        'Shift announcements are switched off for this group. Turn them on at ' +
+                            `${guild.siteUrl}/dashboard/${guild.groupSlug}/bot.`
+                    )
                 ]
             })
             return
@@ -26,7 +29,12 @@ export const command: Command = {
         const shift = await api.shift(guild.guildId, 'next')
         if (!shift) {
             await interaction.editReply({
-                embeds: [reply.error('There is no upcoming shift to announce. Add one on the website first.')]
+                embeds: [
+                    reply.error(
+                        'There is no upcoming shift to announce. Add one at ' +
+                            `${guild.siteUrl}/dashboard/${guild.groupSlug}/shifts.`
+                    )
+                ]
             })
             return
         }
@@ -40,7 +48,11 @@ export const command: Command = {
                           'Shift announced',
                           `**${shift.name}** on ${timestamp(shift.start, 'F')} was announced in <#${result.channelId}>.`
                       )
-                    : reply.error(`Could not announce it: ${result.reason}.`)
+                    : reply.error(
+                          `Could not announce it: ${result.reason}.\n\n` +
+                              `Set the announcement channel at ${guild.siteUrl}/dashboard/${guild.groupSlug}/bot, ` +
+                              'and check the bot can send messages and embed links there.'
+                      )
             ]
         })
     }
