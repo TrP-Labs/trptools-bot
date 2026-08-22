@@ -28,6 +28,12 @@ export type BotConfig = {
     hostPingRole: string | null
 
     placeId: string
+    /**
+     * The group owner's Roblox account, resolved by the API rather than set by
+     * anyone. Null only when Roblox could not be reached and nothing was ever
+     * cached — the link then opens the public game, so it is worth not
+     * assuming this is always present.
+     */
     ownerRobloxId: string | null
 
     /**
