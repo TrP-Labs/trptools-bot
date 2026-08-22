@@ -30,19 +30,50 @@ export type ClearResult = {
      * than reporting a clean sweep that did not happen.
      */
     failed: number
+    /** Left alone because the group asked for that channel to be kept. */
+    kept: number
     tracked: number
+    /** The channels a deletion was refused in, for a message worth acting on. */
+    blockedChannels: string[]
 }
 
-export async function clearShiftMessages(client: Client, shift: Shift): Promise<ClearResult> {
+/**
+ * Which cleanup setting governs a given recorded message.
+ *
+ * The Redis field name is the only record of what a message was, and it maps
+ * onto the channel it lives in — which is how a group thinks about clearing:
+ * "clear the sign-up channels, leave the announcements".
+ */
+export function wantsClearing(field: string, guild: Guild): boolean {
+    if (field.startsWith('sheet:') || field.startsWith('staff:')) {
+        return guild.config.clearSignups !== false
+    }
+
+    if (field === 'host') return guild.config.clearHostReminders !== false
+
+    // The upcoming notice, the start announcement and the board posted under
+    // it all live in the announcement channel.
+    return guild.config.clearAnnouncements !== false
+}
+
+export async function clearShiftMessages(client: Client, guild: Guild, shift: Shift): Promise<ClearResult> {
     const posted = await state.allFor(shift.eventId, shift.start)
+    const blocked = new Set<string>()
     let removed = 0
     let failed = 0
+    let kept = 0
 
     for (const entry of posted) {
+        if (!wantsClearing(entry.field, guild)) {
+            kept++
+            continue
+        }
+
         try {
             const channel = await client.channels.fetch(entry.channelId)
             if (!channel?.isTextBased()) {
                 failed++
+                blocked.add(entry.channelId)
                 continue
             }
 
@@ -57,12 +88,17 @@ export async function clearShiftMessages(client: Client, shift: Shift): Promise<
         } catch (error) {
             log.warn('complete', 'could not delete a message', error)
             failed++
+            blocked.add(entry.channelId)
         }
     }
 
-    await state.forget(shift.eventId, shift.start)
+    // A message that could not be deleted keeps its record, so running
+    // `/complete` again after fixing the bot's permissions actually retries.
+    // Forgetting unconditionally is what left last week's sheets stranded with
+    // nothing pointing at them any more.
+    if (failed === 0) await state.forget(shift.eventId, shift.start)
 
-    return { removed, failed, tracked: posted.length }
+    return { removed, failed, kept, tracked: posted.length, blockedChannels: [...blocked] }
 }
 
 export async function postPoll(client: Client, guild: Guild, shift: Shift): Promise<boolean> {

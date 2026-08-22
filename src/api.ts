@@ -19,10 +19,23 @@ export type BotConfig = {
     hostChannel: string | null
 
     shiftPingRole: string | null
+    /**
+     * Whether the upcoming notice pings the shift role as well as the start
+     * announcement. Optional, and absent means no — matching the default, so a
+     * bot running ahead of the API stays quiet rather than pinging.
+     */
+    pingUpcoming?: boolean
     hostPingRole: string | null
 
     placeId: string
     ownerRobloxId: string | null
+
+    /**
+     * Whether the public start announcement prints the join code as text.
+     * Optional so a bot running ahead of the API still behaves as it always
+     * did — the code is shown unless the group has said not to.
+     */
+    announceJoinCode?: boolean
 
     announcementsEnabled: boolean
     signupsEnabled: boolean
@@ -44,6 +57,15 @@ export type BotConfig = {
     autoCompleteDelay: number
 
     manifestRefreshSeconds: number
+
+    /**
+     * Which of the bot's own posts the end-of-shift cleanup takes down,
+     * grouped by the channel they live in. Optional for the same reason as
+     * above: absent means clear everything, which is what it always did.
+     */
+    clearSignups?: boolean
+    clearAnnouncements?: boolean
+    clearHostReminders?: boolean
 }
 
 export type SignupPerson = {
