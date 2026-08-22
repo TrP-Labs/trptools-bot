@@ -3,6 +3,7 @@ import type { Guild, Shift } from '../api'
 import { sendable } from '../discord/channels'
 import { log } from '../log'
 import { state } from '../state'
+import { wantsClearing } from './rules'
 
 /**
  * Closing a shift out: clearing the sheets it posted and asking how it went.
@@ -35,25 +36,6 @@ export type ClearResult = {
     tracked: number
     /** The channels a deletion was refused in, for a message worth acting on. */
     blockedChannels: string[]
-}
-
-/**
- * Which cleanup setting governs a given recorded message.
- *
- * The Redis field name is the only record of what a message was, and it maps
- * onto the channel it lives in — which is how a group thinks about clearing:
- * "clear the sign-up channels, leave the announcements".
- */
-export function wantsClearing(field: string, guild: Guild): boolean {
-    if (field.startsWith('sheet:') || field.startsWith('staff:')) {
-        return guild.config.clearSignups !== false
-    }
-
-    if (field === 'host') return guild.config.clearHostReminders !== false
-
-    // The upcoming notice, the start announcement and the board posted under
-    // it all live in the announcement channel.
-    return guild.config.clearAnnouncements !== false
 }
 
 export async function clearShiftMessages(client: Client, guild: Guild, shift: Shift): Promise<ClearResult> {
