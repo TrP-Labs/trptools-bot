@@ -81,7 +81,20 @@ async function carryOut(client: Client, action: DueAction, guild: Guild): Promis
         }
 
         case 'COMPLETE': {
-            await clearShiftMessages(client, target)
+            const cleared = await clearShiftMessages(client, guild, target)
+
+            // Nothing here is fatal — the poll still goes out — but a cleanup
+            // the bot was not allowed to do is invisible otherwise, and the
+            // shift is over before anybody would notice.
+            if (cleared.failed > 0) {
+                log.warn(
+                    'automation',
+                    `could not delete ${cleared.failed} message(s) closing out ${target.name} — ` +
+                        'check Manage Messages and Read Message History in ' +
+                        cleared.blockedChannels.map((id) => `#${id}`).join(', ')
+                )
+            }
+
             await postPoll(client, guild, target)
             await state.untrackManifest(guild.guildId)
             return true

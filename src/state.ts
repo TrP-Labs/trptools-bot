@@ -25,6 +25,9 @@ const TTL = 60 * 60 * 24 * 14
 
 export type PostedMessage = { channelId: string; messageId: string }
 
+/** A posted message alongside the hash field that identifies what it is. */
+export type RecordedMessage = PostedMessage & { field: string }
+
 const occurrenceKey = (eventId: string, occurrence: string) =>
     `botmsg:${eventId}:${new Date(occurrence).getTime()}`
 
@@ -137,19 +140,25 @@ export const state = {
 
     findManifest: (eventId: string, occurrence: string) => get(eventId, occurrence, MANIFEST_FIELD),
 
-    /** Everything posted for one occurrence, for the end-of-shift cleanup. */
-    async allFor(eventId: string, occurrence: string): Promise<PostedMessage[]> {
+    /**
+     * Everything posted for one occurrence, for the end-of-shift cleanup.
+     *
+     * The field name comes back with each entry because it is the only record
+     * of *what* a message was — a sheet, a staff ping, the announcement — and
+     * a group can now choose which of those the cleanup takes down.
+     */
+    async allFor(eventId: string, occurrence: string): Promise<RecordedMessage[]> {
         if (!redis) return []
 
         try {
             const all = await redis.hgetall(occurrenceKey(eventId, occurrence))
 
-            return Object.values(all)
-                .map((raw) => {
+            return Object.entries(all)
+                .map(([field, raw]) => {
                     const [channelId, messageId] = raw.split(':')
-                    return channelId && messageId ? { channelId, messageId } : null
+                    return channelId && messageId ? { field, channelId, messageId } : null
                 })
-                .filter((value): value is PostedMessage => value !== null)
+                .filter((value): value is RecordedMessage => value !== null)
         } catch {
             return []
         }

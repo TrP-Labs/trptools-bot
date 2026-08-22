@@ -30,7 +30,7 @@ export const command: Command = {
             return
         }
 
-        const cleared = await clearShiftMessages(client, shift)
+        const cleared = await clearShiftMessages(client, guild, shift)
         const polled = await postPoll(client, guild, shift)
         await state.untrackManifest(guild.guildId)
 
@@ -39,15 +39,32 @@ export const command: Command = {
         if (cleared.tracked === 0) {
             lines.push('There was nothing left to clear.')
         } else {
-            lines.push(`Cleared ${cleared.removed} of ${cleared.tracked} message${cleared.tracked === 1 ? '' : 's'}.`)
+            const considered = cleared.tracked - cleared.kept
+            lines.push(
+                considered === 0
+                    ? 'Clearing is switched off for every channel this shift posted in.'
+                    : `Cleared ${cleared.removed} of ${considered} message${considered === 1 ? '' : 's'}.`
+            )
+        }
+
+        // Kept on purpose is not a problem, but saying so stops a host reading
+        // a partial sweep as a failure and going hunting for one.
+        if (cleared.kept > 0) {
+            lines.push(
+                `Left ${cleared.kept} alone — those channels are set to keep their messages at ` +
+                    `${guild.siteUrl}/dashboard/${guild.groupSlug}/bot.`
+            )
         }
 
         // A silent partial failure here is how a channel ends up with last
         // week's sheets still in it, so it is called out rather than logged.
         if (cleared.failed > 0) {
+            const where = cleared.blockedChannels.map((id) => `<#${id}>`).join(', ')
+
             lines.push(
-                `Could not delete ${cleared.failed} of them — check the bot still has **Manage Messages** ` +
-                    'in those channels.'
+                `Could not delete ${cleared.failed} of them in ${where} — the bot needs **Manage ` +
+                    'Messages** and **Read Message History** there. Fix that and run `/complete` again; ' +
+                    'the messages are still tracked, so nothing is stranded.'
             )
         }
 
