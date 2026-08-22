@@ -44,7 +44,7 @@ export const handler: ComponentHandler = {
                     'Shift updated',
                     [
                         note ? `**Note**\n${note}` : 'No note will be shown.',
-                        owner ? `**Server owner**\n\`${owner}\`` : 'Using the group default server owner.'
+                        owner ? `**Server owner**\n\`${owner}\`` : 'Using the group owner’s server.'
                     ].join('\n\n')
                 )
             ]

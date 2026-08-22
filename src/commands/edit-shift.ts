@@ -56,7 +56,7 @@ export const command: Command = {
             .setMaxLength(20)
             .setRequired(false)
             .setValue(shift.ownerRobloxId ?? '')
-            .setPlaceholder('Leave blank to use the group default.')
+            .setPlaceholder('Leave blank to use the group owner’s server.')
 
         await interaction.showModal(
             new ModalBuilder()
