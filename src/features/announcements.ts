@@ -30,6 +30,29 @@ function websiteButton(guild: Guild, shift: Shift) {
 
 export type AnnounceResult = { ok: true; channelId: string } | { ok: false; reason: string }
 
+/**
+ * Whether the public start announcement prints the join code as text.
+ *
+ * The button carries the code either way, so this locks nobody out — it stops
+ * the code living on as copyable text in a public channel after the shift.
+ * Absent means yes, because the bot deploys independently of the API and an
+ * older API omits the field entirely.
+ */
+export function showsJoinCode(code: string | null | undefined, guild: Guild): boolean {
+    return Boolean(code) && guild.config.announceJoinCode !== false
+}
+
+/**
+ * Whether the "a shift is coming up" post pings the shift role.
+ *
+ * The opposite default to the above: absent means no. The notice goes out well
+ * ahead of the shift, where a ping is noise, and a group that pings on both
+ * ends up training people to mute the one that matters.
+ */
+export function pingsUpcoming(guild: Guild): boolean {
+    return guild.config.pingUpcoming === true
+}
+
 /** "A shift is coming up." */
 export async function announceUpcoming(client: Client, guild: Guild, shift: Shift): Promise<AnnounceResult> {
     const channel = await sendable(client, guild.config.announcementChannel)
@@ -51,7 +74,7 @@ export async function announceUpcoming(client: Client, guild: Guild, shift: Shif
 
     try {
         const message = await channel.send({
-            content: mentionRole(guild.config.shiftPingRole) || undefined,
+            content: (pingsUpcoming(guild) ? mentionRole(guild.config.shiftPingRole) : '') || undefined,
             embeds: [embed],
             components: [websiteButton(guild, shift)]
         })
@@ -85,13 +108,15 @@ export async function announceStart(
 
     const link = joinLink(guild, shift, code)
 
+    const showCode = showsJoinCode(code, guild)
+
     const embed = new EmbedBuilder()
         .setColor(colorOf(shift.color))
         .setTitle(`${shift.name} is starting`)
         .setDescription(
             [
                 shift.note,
-                `[Click here to join](${link})${code ? `, or use the code **${code}**` : ''}`,
+                `[Click here to join](${link})${showCode ? `, or use the code **${code}**` : ''}`,
                 '-# You can also join through the servers menu in game.'
             ]
                 .filter(Boolean)
