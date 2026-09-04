@@ -178,6 +178,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (!response.ok) throw new ApiError(response.status, path)
     if (response.status === 204) return undefined as T
 
+    // Parsed by what the API actually sent, not by assumption. Its "this
+    // worked" responses are the bare string `Success`, which Elysia serves as
+    // `text/plain` — and `response.json()` on that throws, which `optional`
+    // then swallowed into a null. `/edit-shift` saved the note every time and
+    // then told the host it had not, because the only thing that failed was
+    // reading the word "Success" as JSON.
+    const contentType = response.headers.get('content-type') ?? ''
+    if (!contentType.includes('json')) return (await response.text()) as T
+
     return (await response.json()) as T
 }
 
