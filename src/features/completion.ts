@@ -1,6 +1,8 @@
 import type { Client } from 'discord.js'
 import type { Guild, Shift } from '../api'
 import { sendable } from '../discord/channels'
+import { voice } from '../discord/registry'
+import { clamp, LIMIT, type MessageKey } from '../i18n'
 import { log } from '../log'
 import { state } from '../state'
 import { wantsClearing } from './rules'
@@ -14,12 +16,22 @@ import { wantsClearing } from './rules'
  * the message bookkeeping in Redis exists for.
  */
 
-const POLL_ANSWERS = [
-    { text: 'I loved it', emoji: '❤️' },
-    { text: 'I liked it', emoji: '👍' },
-    { text: 'It could be better', emoji: '🤷' },
-    { text: 'I did not like it', emoji: '👎' },
-    { text: 'I hated it', emoji: '💔' }
+/**
+ * The five answers, worst to best, with the emoji that carries each.
+ *
+ * A poll is the one thing the bot sends that is **not** rendered in every
+ * language a group picked. Discord caps an answer at 55 characters and offers
+ * no per-reader wording, so two languages in one answer would leave both cut
+ * off — and a reader picking between five truncated options is worse served
+ * than one reading the group's first language. The emoji is what actually
+ * carries the meaning here, and it reads the same everywhere.
+ */
+const POLL_ANSWERS: Array<[MessageKey, string]> = [
+    ['bot_poll_loved_it', '❤️'],
+    ['bot_poll_liked_it', '👍'],
+    ['bot_poll_could_be_better', '🤷'],
+    ['bot_poll_did_not_like_it', '👎'],
+    ['bot_poll_hated_it', '💔']
 ]
 
 export type ClearResult = {
@@ -93,11 +105,18 @@ export async function postPoll(client: Client, guild: Guild, shift: Shift): Prom
     // late still names the shift it is about.
     const date = new Date(shift.start).toISOString().slice(0, 10)
 
+    const t = voice(guild).first
+
     try {
         await channel.send({
             poll: {
-                question: { text: `${shift.name} — ${date}` },
-                answers: POLL_ANSWERS,
+                question: {
+                    text: clamp(t('bot_poll_question', { name: shift.name, date }), LIMIT.pollQuestion)
+                },
+                answers: POLL_ANSWERS.map(([key, emoji]) => ({
+                    text: clamp(t(key), LIMIT.pollAnswer),
+                    emoji
+                })),
                 allowMultiselect: false,
                 duration: 24
             }

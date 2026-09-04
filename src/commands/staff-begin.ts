@@ -2,8 +2,9 @@ import { PermissionFlagsBits, SlashCommandBuilder } from 'discord.js'
 import { api } from '../api'
 import { timestamp } from '../discord/format'
 import type { Command } from '../discord/registry'
-import { reply } from '../discord/registry'
+import { reply, voice } from '../discord/registry'
 import { letStaffIn } from '../features/announcements'
+import { dashboardLink, describeCommand, describeOption } from '../i18n/command'
 import { state } from '../state'
 
 /**
@@ -15,29 +16,26 @@ import { state } from '../state'
  * decides when each happens.
  */
 export const command: Command = {
-    data: new SlashCommandBuilder()
-        .setName('staff-begin')
-        .setDescription('Tell the staff who signed up that the server is open, before announcing it publicly.')
-        .addStringOption((option) =>
-            option
-                .setName('code')
-                .setDescription('The private server join code, if you have one.')
-                .setMinLength(4)
-                .setMaxLength(12)
-        )
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageEvents),
+    data: describeCommand(
+        new SlashCommandBuilder()
+            .setName('staff-begin')
+            .addStringOption((option) =>
+                describeOption(option.setName('code'), 'bot_command_option_code_description')
+                    .setMinLength(4)
+                    .setMaxLength(12)
+            )
+            .setDefaultMemberPermissions(PermissionFlagsBits.ManageEvents),
+        'bot_command_staff_begin_description'
+    ),
 
     async execute({ interaction, client, guild }) {
         await interaction.deferReply()
 
+        const l = voice(guild)
+
         if (!guild.config.signupsEnabled) {
             await interaction.editReply({
-                embeds: [
-                    reply.error(
-                        'Sign-up sheets are switched off for this group, so there is nobody to let in. ' +
-                            `Turn them on at ${guild.siteUrl}/dashboard/${guild.groupSlug}/bot.`
-                    )
-                ]
+                embeds: [reply(l).error(l.text('bot_off_signups_nobody', { link: dashboardLink(guild, 'bot') }))]
             })
             return
         }
@@ -48,12 +46,7 @@ export const command: Command = {
 
         if (!shift) {
             await interaction.editReply({
-                embeds: [
-                    reply.error(
-                        'There is no shift running or coming up, so there is nobody to let in. Add one at ' +
-                            `${guild.siteUrl}/dashboard/${guild.groupSlug}/shifts.`
-                    )
-                ]
+                embeds: [reply(l).error(l.text('bot_nothing_to_let_in', { link: dashboardLink(guild, 'shifts') }))]
             })
             return
         }
@@ -61,20 +54,13 @@ export const command: Command = {
         const occurrence = await api.occurrence(guild.guildId, shift.eventId, shift.start)
 
         if (!occurrence) {
-            await interaction.editReply({
-                embeds: [reply.error('Could not read the sign-ups for this shift. Try again in a moment.')]
-            })
+            await interaction.editReply({ embeds: [reply(l).error(l.text('bot_staff_begin_no_signups_read'))] })
             return
         }
 
         if (occurrence.sheets.length === 0) {
             await interaction.editReply({
-                embeds: [
-                    reply.error(
-                        'No rank has a sign-up sheet, so nobody could have signed up. Sign-ups are per ' +
-                            `rank — add one at ${guild.siteUrl}/dashboard/${guild.groupSlug}/ranks.`
-                    )
-                ]
+                embeds: [reply(l).error(l.text('bot_staff_begin_no_sheets', { link: dashboardLink(guild, 'ranks') }))]
             })
             return
         }
@@ -89,29 +75,51 @@ export const command: Command = {
         if (result.notified.length === 0) {
             await interaction.editReply({
                 embeds: [
-                    reply.error(
-                        ['Nobody was let in:', ...result.skipped.map((entry) => `• ${entry}`)].join('\n') +
-                            '\n\nSheets post to the channel set on each rank at ' +
-                            `${guild.siteUrl}/dashboard/${guild.groupSlug}/ranks.`
+                    reply(l).error(
+                        l.block((t) => [
+                            t('bot_staff_begin_nobody_let_in'),
+                            ...result.skipped.map(
+                                (entry) =>
+                                    `• ${t('bot_staff_begin_skipped_entry', {
+                                        sheet: entry.sheet,
+                                        reason: t(entry.reason)
+                                    })}`
+                            ),
+                            '',
+                            t('bot_staff_begin_where_sheets_post', { link: dashboardLink(guild, 'ranks') })
+                        ])
                     )
                 ]
             })
             return
         }
 
-        const lines = [`Told sign-ups in: ${result.notified.join(', ')}.`]
-
-        if (result.skipped.length > 0) lines.push(`Skipped: ${result.skipped.join(', ')}.`)
-        if (!code) lines.push('No join code was given, so the link points at the group’s default server.')
-
-        lines.push(
-            new Date(shift.start).getTime() > Date.now()
-                ? `The public announcement is still to come — run \`/begin\` at ${timestamp(shift.start, 't')}.`
-                : 'Run `/begin` when you are ready to announce it publicly.'
-        )
+        const startsLater = new Date(shift.start).getTime() > Date.now()
 
         await interaction.editReply({
-            embeds: [reply.success(`Staff are in for ${shift.name}`, lines.join('\n'))]
+            embeds: [
+                reply(l).success(
+                    l.line('bot_staff_begin_title', { name: shift.name }),
+                    l.block((t) => [
+                        t('bot_staff_begin_told', { sheets: result.notified.join(', ') }),
+                        result.skipped.length > 0 &&
+                            t('bot_staff_begin_skipped', {
+                                sheets: result.skipped
+                                    .map((entry) =>
+                                        t('bot_staff_begin_skipped_entry', {
+                                            sheet: entry.sheet,
+                                            reason: t(entry.reason)
+                                        })
+                                    )
+                                    .join(', ')
+                            }),
+                        !code && t('bot_staff_begin_no_code'),
+                        startsLater
+                            ? t('bot_staff_begin_announce_at', { at: timestamp(shift.start, 't') })
+                            : t('bot_staff_begin_announce_when_ready')
+                    ])
+                )
+            ]
         })
     }
 }

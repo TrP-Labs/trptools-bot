@@ -2,8 +2,10 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, type Client
 import type { Guild, Occurrence, Shift } from '../api'
 import { sendable } from '../discord/channels'
 import { colorOf, joinLink, mentionPerson, mentionRole, shiftUrl, timestamp } from '../discord/format'
+import { clamp, LIMIT, type Localizer, type ReasonKey } from '../i18n'
 import { log } from '../log'
 import { pingsUpcoming, showsJoinCode } from './rules'
+import { voice } from '../discord/registry'
 import { state } from '../state'
 
 /**
@@ -20,41 +22,58 @@ import { state } from '../state'
  * page with nothing on it for them. The sheets themselves say "sign up",
  * because that is what they are.
  */
-function websiteButton(guild: Guild, shift: Shift) {
+function websiteButton(l: Localizer, guild: Guild, shift: Shift) {
     return new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
             .setStyle(ButtonStyle.Link)
-            .setLabel('View on the website')
+            .setLabel(clamp(l.line('bot_common_view_on_the_website'), LIMIT.buttonLabel))
             .setURL(shiftUrl(guild, shift))
     )
 }
 
-export type AnnounceResult = { ok: true; channelId: string } | { ok: false; reason: string }
+/**
+ * Why a post did not go out, as a key rather than a sentence.
+ *
+ * The command that called this renders the reason inside its own apology, in
+ * the group's own languages — see `ReasonKey`.
+ */
+export type AnnounceResult = { ok: true; channelId: string } | { ok: false; reason: ReasonKey }
 
 /** "A shift is coming up." */
 export async function announceUpcoming(client: Client, guild: Guild, shift: Shift): Promise<AnnounceResult> {
     const channel = await sendable(client, guild.config.announcementChannel)
-    if (!channel) return { ok: false, reason: 'no shift announcement channel the bot can post in' }
+    if (!channel) return { ok: false, reason: 'bot_reason_no_announcement_channel' }
+
+    const l = voice(guild)
 
     const embed = new EmbedBuilder()
         .setColor(colorOf(shift.color))
-        .setTitle('Upcoming shift')
+        .setTitle(clamp(l.line('bot_announce_upcoming_title'), LIMIT.embedTitle))
         .setDescription(
-            [
-                `**${shift.name}** is scheduled for ${timestamp(shift.start, 'F')} (${timestamp(shift.start, 'R')}).`,
-                shift.description,
-                shift.note
-            ]
-                .filter(Boolean)
-                .join('\n\n')
+            clamp(
+                [
+                    l.text('bot_announce_upcoming_body', {
+                        name: shift.name,
+                        at: timestamp(shift.start, 'F'),
+                        relative: timestamp(shift.start, 'R')
+                    }),
+                    // The group wrote these themselves, in whatever language
+                    // they wrote them in. Nothing here translates them.
+                    shift.description,
+                    shift.note
+                ]
+                    .filter(Boolean)
+                    .join('\n\n'),
+                LIMIT.embedDescription
+            )
         )
-        .setFooter({ text: guild.groupName })
+        .setFooter({ text: clamp(guild.groupName, LIMIT.embedFooter) })
 
     try {
         const message = await channel.send({
             content: (pingsUpcoming(guild) ? mentionRole(guild.config.shiftPingRole) : '') || undefined,
             embeds: [embed],
-            components: [websiteButton(guild, shift)]
+            components: [websiteButton(l, guild, shift)]
         })
 
         await state.rememberNotice(shift.eventId, shift.start, 'upcoming', {
@@ -65,7 +84,7 @@ export async function announceUpcoming(client: Client, guild: Guild, shift: Shif
         return { ok: true, channelId: channel.id }
     } catch (error) {
         log.error('announce', 'upcoming announcement refused', error)
-        return { ok: false, reason: 'Discord refused the message' }
+        return { ok: false, reason: 'bot_reason_discord_refused' }
     }
 }
 
@@ -82,32 +101,46 @@ export async function announceStart(
     code?: string | null
 ): Promise<AnnounceResult> {
     const channel = await sendable(client, guild.config.announcementChannel)
-    if (!channel) return { ok: false, reason: 'no shift announcement channel the bot can post in' }
+    if (!channel) return { ok: false, reason: 'bot_reason_no_announcement_channel' }
 
+    const l = voice(guild)
     const link = joinLink(guild, shift, code)
-
     const showCode = showsJoinCode(code, guild)
 
     const embed = new EmbedBuilder()
         .setColor(colorOf(shift.color))
-        .setTitle(`${shift.name} is starting`)
+        .setTitle(clamp(l.line('bot_announce_start_title', { name: shift.name }), LIMIT.embedTitle))
         .setDescription(
-            [
-                shift.note,
-                `[Click here to join](${link})${showCode ? `, or use the code **${code}**` : ''}`,
-                '-# You can also join through the servers menu in game.'
-            ]
-                .filter(Boolean)
-                .join('\n\n')
+            clamp(
+                [
+                    shift.note,
+                    l.block((t) =>
+                        showCode
+                            ? t('bot_announce_start_join_with_code', { link, code: code ?? '' })
+                            : t('bot_announce_start_join', { link })
+                    ),
+                    // `-#` is Discord's small text. It has to lead the line, so
+                    // it is applied per rendered stanza rather than baked into
+                    // a string a translator would have to carry it through.
+                    l.block((t) => `-# ${t('bot_announce_start_servers_menu')}`)
+                ]
+                    .filter(Boolean)
+                    .join('\n\n'),
+                LIMIT.embedDescription
+            )
         )
-        .addFields({ name: 'Ends', value: timestamp(shift.end, 'R'), inline: true })
-        .setFooter({ text: guild.groupName })
+        .addFields({
+            name: clamp(l.line('bot_announce_start_ends'), LIMIT.embedFieldName),
+            value: timestamp(shift.end, 'R'),
+            inline: true
+        })
+        .setFooter({ text: clamp(guild.groupName, LIMIT.embedFooter) })
 
     try {
         const message = await channel.send({
             content: mentionRole(guild.config.shiftPingRole) || undefined,
             embeds: [embed],
-            components: [websiteButton(guild, shift)]
+            components: [websiteButton(l, guild, shift)]
         })
 
         await state.rememberAnnouncement(shift.eventId, shift.start, {
@@ -118,9 +151,12 @@ export async function announceStart(
         return { ok: true, channelId: channel.id }
     } catch (error) {
         log.error('announce', 'start announcement refused', error)
-        return { ok: false, reason: 'Discord refused the message' }
+        return { ok: false, reason: 'bot_reason_discord_refused' }
     }
 }
+
+/** One sheet the staff ping could not reach, and why. */
+export type StaffSkip = { sheet: string; reason: ReasonKey }
 
 /**
  * Lets the people who signed up into the server.
@@ -138,9 +174,10 @@ export async function letStaffIn(
     guild: Guild,
     occurrence: Occurrence,
     code?: string | null
-): Promise<{ notified: string[]; skipped: string[] }> {
+): Promise<{ notified: string[]; skipped: StaffSkip[] }> {
     const notified: string[] = []
-    const skipped: string[] = []
+    const skipped: StaffSkip[] = []
+    const l = voice(guild)
     const link = joinLink(guild, occurrence.shift, code)
     const started = new Date(occurrence.shift.start).getTime() <= Date.now()
 
@@ -150,46 +187,55 @@ export async function letStaffIn(
         )
 
         if (people.length === 0) {
-            skipped.push(`${sheet.name} (nobody signed up)`)
+            skipped.push({ sheet: sheet.name, reason: 'bot_reason_nobody_signed_up' })
             continue
         }
 
         const channel = await sendable(client, sheet.discordChannel)
         if (!channel) {
-            skipped.push(`${sheet.name} (no channel the bot can post in)`)
+            skipped.push({ sheet: sheet.name, reason: 'bot_reason_cannot_post_in_channel' })
             continue
         }
 
         const embed = new EmbedBuilder()
             .setColor(colorOf(sheet.color))
-            .setTitle(`${sheet.name} — the server is open`)
+            .setTitle(clamp(l.line('bot_staff_title', { sheet: sheet.name }), LIMIT.embedTitle))
             .setDescription(
-                [
-                    started
-                        ? `**${occurrence.shift.name}** is running now.`
-                        : `**${occurrence.shift.name}** starts ${timestamp(occurrence.shift.start, 'R')}. ` +
-                          'You are on it, so come in and get set up.',
-                    `[Click here to join](${link})${code ? `, or use the code **${code}**` : ''}`
-                ].join('\n\n')
+                clamp(
+                    l.block((t) => [
+                        started
+                            ? t('bot_staff_running_now', { name: occurrence.shift.name })
+                            : t('bot_staff_starting_soon', {
+                                  name: occurrence.shift.name,
+                                  relative: timestamp(occurrence.shift.start, 'R')
+                              }),
+                        '',
+                        code
+                            ? t('bot_announce_start_join_with_code', { link, code })
+                            : t('bot_announce_start_join', { link })
+                    ]),
+                    LIMIT.embedDescription
+                )
             )
             .addFields(
                 people.map((entry) => ({
-                    name: entry.slot,
-                    value: mentionPerson(entry.person),
+                    name: clamp(entry.slot, LIMIT.embedFieldName),
+                    value: mentionPerson(entry.person, l),
                     inline: true
                 }))
             )
             .setFooter({
-                text: started
-                    ? 'Please keep the join code to the staff on this shift.'
-                    : 'You are in before the public announcement — please keep the code to yourselves.'
+                text: clamp(
+                    l.line(started ? 'bot_staff_footer_running' : 'bot_staff_footer_early'),
+                    LIMIT.embedFooter
+                )
             })
 
         try {
             const message = await channel.send({
                 // A real mention outside the embed, since Discord does not
                 // notify anyone for a mention that only appears inside one.
-                content: people.map((entry) => mentionPerson(entry.person)).join(' '),
+                content: people.map((entry) => mentionPerson(entry.person, l)).join(' '),
                 embeds: [embed]
             })
 
@@ -203,7 +249,7 @@ export async function letStaffIn(
             notified.push(sheet.name)
         } catch (error) {
             log.error('announce', `staff ping for ${sheet.name} refused`, error)
-            skipped.push(`${sheet.name} (Discord refused the message)`)
+            skipped.push({ sheet: sheet.name, reason: 'bot_reason_discord_refused' })
         }
     }
 
@@ -213,22 +259,34 @@ export async function letStaffIn(
 /** Reminds whoever hosts that a shift needs opening. */
 export async function remindHost(client: Client, guild: Guild, shift: Shift): Promise<AnnounceResult> {
     const channel = await sendable(client, guild.config.hostChannel ?? guild.config.announcementChannel)
-    if (!channel) return { ok: false, reason: 'no host channel the bot can post in' }
+    if (!channel) return { ok: false, reason: 'bot_reason_no_host_channel' }
+
+    const l = voice(guild)
 
     const embed = new EmbedBuilder()
         .setColor(colorOf(shift.color))
-        .setTitle('A shift needs a host')
+        .setTitle(clamp(l.line('bot_announce_host_title'), LIMIT.embedTitle))
         .setDescription(
-            `**${shift.name}** starts ${timestamp(shift.start, 'R')} (${timestamp(shift.start, 'F')}).\n\n` +
-                'Open the dispatch room and start the server when you are ready.'
+            clamp(
+                l.block((t) => [
+                    t('bot_announce_host_body', {
+                        name: shift.name,
+                        relative: timestamp(shift.start, 'R'),
+                        at: timestamp(shift.start, 'F')
+                    }),
+                    '',
+                    t('bot_announce_host_open_the_room')
+                ]),
+                LIMIT.embedDescription
+            )
         )
-        .setFooter({ text: guild.groupName })
+        .setFooter({ text: clamp(guild.groupName, LIMIT.embedFooter) })
 
     try {
         const message = await channel.send({
             content: mentionRole(guild.config.hostPingRole) || undefined,
             embeds: [embed],
-            components: [websiteButton(guild, shift)]
+            components: [websiteButton(l, guild, shift)]
         })
 
         await state.rememberNotice(shift.eventId, shift.start, 'host', {
@@ -239,6 +297,6 @@ export async function remindHost(client: Client, guild: Guild, shift: Shift): Pr
         return { ok: true, channelId: channel.id }
     } catch (error) {
         log.error('announce', 'host reminder refused', error)
-        return { ok: false, reason: 'Discord refused the message' }
+        return { ok: false, reason: 'bot_reason_discord_refused' }
     }
 }

@@ -1,5 +1,6 @@
 import type { ColorResolvable } from 'discord.js'
 import type { Guild, Shift, SignupPerson } from '../api'
+import type { Localizer } from '../i18n'
 
 /** Discord renders these in each reader's own timezone, so never format dates. */
 export function timestamp(value: string | Date, style: 'F' | 'f' | 'R' | 't' = 'F'): string {
@@ -23,9 +24,9 @@ export function mentionRole(roleId: string | null): string {
  * their TrPTools display name instead — a sheet that silently omitted them
  * would make the two halves disagree about who is on shift.
  */
-export function mentionPerson(person: SignupPerson): string {
+export function mentionPerson(person: SignupPerson, l: Localizer): string {
     if (person.discordId) return `<@${person.discordId}>`
-    return person.displayName ?? 'Someone on the website'
+    return person.displayName ?? l.line('bot_common_someone_on_the_website')
 }
 
 /**

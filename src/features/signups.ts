@@ -3,6 +3,7 @@ import { api, type Guild, type Sheet, type Shift } from '../api'
 import { sendable } from '../discord/channels'
 import { mentionRole } from '../discord/format'
 import { sheetMessage } from '../embeds/signup'
+import type { ReasonKey } from '../i18n'
 import { log } from '../log'
 import { state } from '../state'
 
@@ -16,8 +17,13 @@ import { state } from '../state'
 
 export type PostOutcome = {
     posted: Array<{ sheet: Sheet; channelId: string }>
-    /** Sheets that could not go anywhere, so a command can say which. */
-    skipped: Array<{ sheet: Sheet; reason: string }>
+    /**
+     * Sheets that could not go anywhere, so a command can say which.
+     *
+     * The reason is a message key rather than a sentence: `/signups` renders
+     * it inside its own reply, in the group's own languages.
+     */
+    skipped: Array<{ sheet: Sheet; reason: ReasonKey }>
 }
 
 /**
@@ -32,7 +38,7 @@ export async function postSheets(client: Client, guild: Guild, shift: Shift, she
 
     for (const sheet of sheets) {
         if (sheet.slots.length === 0) {
-            outcome.skipped.push({ sheet, reason: 'no slots configured' })
+            outcome.skipped.push({ sheet, reason: 'bot_reason_no_slots' })
             continue
         }
 
@@ -40,7 +46,9 @@ export async function postSheets(client: Client, guild: Guild, shift: Shift, she
         if (!channel) {
             outcome.skipped.push({
                 sheet,
-                reason: sheet.discordChannel ? 'the bot cannot post in its channel' : 'no channel set'
+                reason: sheet.discordChannel
+                    ? 'bot_reason_cannot_post_in_channel'
+                    : 'bot_reason_no_channel_set'
             })
             continue
         }
@@ -71,7 +79,7 @@ export async function postSheets(client: Client, guild: Guild, shift: Shift, she
             outcome.posted.push({ sheet, channelId: channel.id })
         } catch (error) {
             log.error('signups', `could not post ${sheet.name}`, error)
-            outcome.skipped.push({ sheet, reason: 'Discord refused the message' })
+            outcome.skipped.push({ sheet, reason: 'bot_reason_discord_refused' })
         }
     }
 

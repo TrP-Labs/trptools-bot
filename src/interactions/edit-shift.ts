@@ -1,7 +1,7 @@
 import type { Client, Interaction } from 'discord.js'
 import { api } from '../api'
 import { decodeEditShift, EDIT_SHIFT_MODAL } from '../discord/ids'
-import { EPHEMERAL, reply, type ComponentHandler } from '../discord/registry'
+import { EPHEMERAL, englishOnly, reply, voice, type ComponentHandler } from '../discord/registry'
 
 export const handler: ComponentHandler = {
     matches: (customId) => customId.startsWith(`${EDIT_SHIFT_MODAL}:`),
@@ -14,6 +14,9 @@ export const handler: ComponentHandler = {
 
         await interaction.deferReply(EPHEMERAL)
 
+        const guild = await api.guild(interaction.guildId)
+        const l = guild ? voice(guild) : englishOnly
+
         const note = interaction.fields.getTextInputValue('note').trim()
         const owner = interaction.fields.getTextInputValue('owner').trim()
 
@@ -21,7 +24,7 @@ export const handler: ComponentHandler = {
         // the player into the public game instead of the shift's server.
         if (owner && !/^[0-9]{1,20}$/.test(owner)) {
             await interaction.editReply({
-                embeds: [reply.error('The server owner has to be a Roblox user ID — digits only.')]
+                embeds: [reply(l).error(l.text('bot_edit_shift_owner_not_a_number'))]
             })
             return
         }
@@ -34,18 +37,19 @@ export const handler: ComponentHandler = {
         })
 
         if (!saved) {
-            await interaction.editReply({ embeds: [reply.error('TrP Tools did not accept that. Try again.')] })
+            await interaction.editReply({ embeds: [reply(l).error(l.text('bot_edit_shift_refused'))] })
             return
         }
 
         await interaction.editReply({
             embeds: [
-                reply.success(
-                    'Shift updated',
-                    [
-                        note ? `**Note**\n${note}` : 'No note will be shown.',
-                        owner ? `**Server owner**\n\`${owner}\`` : 'Using the group owner’s server.'
-                    ].join('\n\n')
+                reply(l).success(
+                    l.line('bot_edit_shift_saved_title'),
+                    l.block((t) => [
+                        note ? t('bot_edit_shift_saved_note', { note }) : t('bot_edit_shift_saved_no_note'),
+                        '',
+                        owner ? t('bot_edit_shift_saved_owner', { owner }) : t('bot_edit_shift_saved_default_owner')
+                    ])
                 )
             ]
         })

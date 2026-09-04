@@ -43,6 +43,16 @@ export type BotConfig = {
      */
     announceJoinCode?: boolean
 
+    /**
+     * The languages this group's messages are said in, in the order it asked
+     * for them. Every message is rendered in all of them at once.
+     *
+     * Optional and possibly empty, which both mean English — a bot running
+     * ahead of an API that has never heard of the setting should still speak,
+     * and `resolveLocales` is the one place that decision is made.
+     */
+    languages?: string[]
+
     announcementsEnabled: boolean
     signupsEnabled: boolean
     pollsEnabled: boolean

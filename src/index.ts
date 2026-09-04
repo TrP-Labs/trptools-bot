@@ -4,12 +4,13 @@ import { api } from './api'
 import { commands } from './commands'
 import { createClient } from './discord/client'
 import { deployCommandsAtStartup } from './discord/deploy'
-import { EPHEMERAL, reply } from './discord/registry'
+import { EPHEMERAL, englishOnly, reply, voice } from './discord/registry'
 import { startAutomation } from './features/automation'
 import { startSignupSync } from './features/sync'
 import { handler as editShiftHandler } from './interactions/edit-shift'
 import { handler as signupHandler } from './interactions/signup'
 import { env } from './env'
+import { type Localizer } from './i18n'
 import { log } from './log'
 import { redis } from './state'
 
@@ -25,10 +26,10 @@ client.components.push(signupHandler, editShiftHandler)
  * silence, which is a far worse thing for a user to see than an error — so
  * every failure path ends in a message, deferred or not.
  */
-async function fail(interaction: Interaction, message: string) {
+async function fail(interaction: Interaction, l: Localizer, message: string) {
     if (!interaction.isRepliable()) return
 
-    const payload = { embeds: [reply.error(message)], ...EPHEMERAL }
+    const payload = { embeds: [reply(l).error(message)], ...EPHEMERAL }
 
     try {
         if (interaction.deferred || interaction.replied) await interaction.editReply({ embeds: payload.embeds })
@@ -39,13 +40,18 @@ async function fail(interaction: Interaction, message: string) {
 }
 
 client.on(Events.InteractionCreate, async (interaction) => {
+    // Whatever the group speaks, once it is known. An apology for a handler
+    // that threw is the one message that has to be sendable from anywhere in
+    // the try block, including from before the group has been resolved.
+    let lastVoice = englishOnly
+
     try {
         if (interaction.isChatInputCommand()) {
             const command = client.commands.get(interaction.commandName)
             if (!command) return
 
             if (!interaction.guildId) {
-                await fail(interaction, 'This command only works inside a server.')
+                await fail(interaction, englishOnly, englishOnly.text('bot_common_server_only'))
                 return
             }
 
@@ -58,13 +64,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
             const guild = await api.guild(interaction.guildId)
             if (!guild) {
-                await fail(
-                    interaction,
-                    'This server is not connected to a TrP Tools group yet. A group manager can add the bot from ' +
-                        'the Bot page in the dashboard.'
-                )
+                // English is not a choice here: the languages are a group's
+                // setting and there is no group to read them from.
+                await fail(interaction, englishOnly, englishOnly.text('bot_common_not_connected'))
                 return
             }
+
+            lastVoice = voice(guild)
 
             await command.execute({ interaction, client, guild })
             return
@@ -81,7 +87,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (handler) await handler.execute(interaction, client)
     } catch (error) {
         log.error('interaction', 'handler threw', error)
-        await fail(interaction, 'Something went wrong handling that. It has been logged.')
+        await fail(interaction, lastVoice, lastVoice.text('bot_common_unhandled'))
     }
 })
 

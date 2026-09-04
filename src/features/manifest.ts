@@ -2,6 +2,8 @@ import { AttachmentBuilder, EmbedBuilder, type Client } from 'discord.js'
 import { api, type Guild, type Shift } from '../api'
 import { sendable } from '../discord/channels'
 import { colorOf } from '../discord/format'
+import { voice } from '../discord/registry'
+import { clamp, LIMIT } from '../i18n'
 import { log } from '../log'
 import { state } from '../state'
 
@@ -19,12 +21,21 @@ import { state } from '../state'
 
 const FILENAME = 'manifest.png'
 
-function manifestEmbed(shift: Shift): EmbedBuilder {
+/**
+ * The wrapper round the picture.
+ *
+ * Only the wrapper is rendered per language. The board itself is drawn by the
+ * API, in one image, and its headings would have to be laid out four times to
+ * carry a language list — so the labels inside it stay English for now.
+ */
+function manifestEmbed(guild: Guild, shift: Shift): EmbedBuilder {
+    const l = voice(guild)
+
     return new EmbedBuilder()
         .setColor(colorOf(shift.color))
-        .setTitle('Dispatch board')
+        .setTitle(clamp(l.line('bot_manifest_title'), LIMIT.embedTitle))
         .setImage(`attachment://${FILENAME}`)
-        .setFooter({ text: 'Updates while the room is open' })
+        .setFooter({ text: clamp(l.line('bot_manifest_footer'), LIMIT.embedFooter) })
         .setTimestamp(new Date())
 }
 
@@ -44,7 +55,7 @@ export async function postManifest(client: Client, guild: Guild, shift: Shift): 
 
         const message = await channel.send({
             reply: { messageReference: anchor.messageId, failIfNotExists: false },
-            embeds: [manifestEmbed(shift)],
+            embeds: [manifestEmbed(guild, shift)],
             files: [new AttachmentBuilder(image, { name: FILENAME })]
         })
 
@@ -84,7 +95,7 @@ export async function refreshManifest(client: Client, guild: Guild, shift: Shift
         // The attachment is replaced wholesale; Discord has no way to swap the
         // bytes behind an existing one.
         await message.edit({
-            embeds: [manifestEmbed(shift)],
+            embeds: [manifestEmbed(guild, shift)],
             files: [new AttachmentBuilder(image, { name: FILENAME })],
             attachments: []
         })

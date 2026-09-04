@@ -9,6 +9,8 @@ import {
 import type { Guild, Sheet, Shift } from '../api'
 import { colorOf, mentionPerson, shiftUrl, timestamp } from '../discord/format'
 import { encodeSignup } from '../discord/ids'
+import { voice } from '../discord/registry'
+import { clamp, LIMIT } from '../i18n'
 
 /**
  * One rank's sign-up sheet, as a Discord message.
@@ -19,34 +21,55 @@ import { encodeSignup } from '../discord/ids'
  */
 
 export function sheetEmbed(guild: Guild, shift: Shift, sheet: Sheet): EmbedBuilder {
+    const l = voice(guild)
+
     const embed = new EmbedBuilder()
         .setColor(colorOf(sheet.color))
-        .setTitle(`${sheet.name} — sign-ups`)
+        .setTitle(clamp(l.line('bot_sheet_title', { sheet: sheet.name }), LIMIT.embedTitle))
         .setDescription(
-            [
-                sheet.description,
-                `**${shift.name}** starts ${timestamp(shift.start, 'F')} (${timestamp(shift.start, 'R')})`,
-                'Pick a slot below, or sign up on the website. Both stay in step.'
-            ]
-                .filter(Boolean)
-                .join('\n\n')
+            clamp(
+                [
+                    // The group's own words, in whichever language they wrote
+                    // them. Only the bot's half is rendered per language.
+                    sheet.description,
+                    l.text('bot_sheet_starts', {
+                        name: shift.name,
+                        at: timestamp(shift.start, 'F'),
+                        relative: timestamp(shift.start, 'R')
+                    }),
+                    l.text('bot_sheet_how_to')
+                ]
+                    .filter(Boolean)
+                    .join('\n\n'),
+                LIMIT.embedDescription
+            )
         )
 
     for (const slot of sheet.slots) {
-        const taken = slot.signups.map(mentionPerson)
+        const taken = slot.signups.map((person) => mentionPerson(person, l))
 
         // Capacity is stated on the field name so a full sheet reads as full
-        // at a glance rather than needing the names counted.
-        const heading = slot.capacity > 1 ? `${slot.name} (${taken.length}/${slot.capacity})` : slot.name
+        // at a glance rather than needing the names counted. A single-capacity
+        // slot says nothing, since "1/1" is the same information as a name.
+        const heading =
+            slot.capacity > 1
+                ? l.line('bot_sheet_slot_heading', {
+                      slot: slot.name,
+                      taken: taken.length,
+                      capacity: slot.capacity
+                  })
+                : slot.name
 
         embed.addFields({
-            name: heading,
-            value: taken.length > 0 ? taken.join('\n') : '*Empty*',
+            name: clamp(heading, LIMIT.embedFieldName),
+            value: clamp(taken.length > 0 ? taken.join('\n') : l.line('bot_sheet_empty'), LIMIT.embedFieldValue),
             inline: false
         })
     }
 
-    embed.setFooter({ text: `${guild.groupName} · sign-ups update live` })
+    embed.setFooter({
+        text: clamp(l.line('bot_sheet_footer', { group: guild.groupName }), LIMIT.embedFooter)
+    })
 
     return embed
 }
@@ -59,6 +82,8 @@ export function sheetEmbed(guild: Guild, shift: Shift, sheet: Sheet): EmbedBuild
  * person to take it.
  */
 export function sheetComponents(guild: Guild, shift: Shift, sheet: Sheet) {
+    const l = voice(guild)
+
     const customId = encodeSignup({
         eventId: shift.eventId,
         occurrence: shift.start,
@@ -69,21 +94,35 @@ export function sheetComponents(guild: Guild, shift: Shift, sheet: Sheet) {
         const full = slot.signups.length >= slot.capacity
 
         return new StringSelectMenuOptionBuilder()
-            .setLabel(full ? `${slot.name} (full)` : slot.name)
-            .setDescription((slot.description || `${slot.signups.length}/${slot.capacity} taken`).slice(0, 100))
+            .setLabel(
+                clamp(
+                    full ? l.line('bot_sheet_slot_full', { slot: slot.name }) : slot.name,
+                    LIMIT.selectOptionLabel
+                )
+            )
+            .setDescription(
+                clamp(
+                    slot.description ||
+                        l.line('bot_sheet_slot_taken_count', {
+                            taken: slot.signups.length,
+                            capacity: slot.capacity
+                        }),
+                    LIMIT.selectOptionDescription
+                )
+            )
             .setValue(slot.id)
     })
 
     const select = new StringSelectMenuBuilder()
         .setCustomId(customId)
-        .setPlaceholder('Choose a slot, or pick yours again to drop it')
+        .setPlaceholder(clamp(l.line('bot_sheet_placeholder'), LIMIT.selectPlaceholder))
         .setMinValues(1)
         .setMaxValues(1)
         .addOptions(options)
 
     const link = new ButtonBuilder()
         .setStyle(ButtonStyle.Link)
-        .setLabel('Sign up on the website')
+        .setLabel(clamp(l.line('bot_sheet_sign_up_on_website'), LIMIT.buttonLabel))
         .setURL(shiftUrl(guild, shift))
 
     return [
