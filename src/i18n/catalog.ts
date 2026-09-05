@@ -1,4 +1,6 @@
 import en from '../../messages/en.json'
+import fr from '../../messages/fr.json'
+import uk from '../../messages/uk.json'
 
 /**
  * Every language the bot ships, imported by name.
@@ -10,13 +12,21 @@ import en from '../../messages/en.json'
  * decision that a translation is complete enough to put in front of people,
  * exactly as `project.inlang/settings.json` is on the website.
  *
- * `messages/en.json` is vendored from `TrP-Labs/Locales`, never edited here.
+ * `messages/*.json` are vendored from `TrP-Labs/Locales`, never edited here.
  * English is the source: it is what typing is derived from, and what every
  * other language falls back to key by key, so a half-translated language is
  * useful rather than full of holes.
+ *
+ * `cs`, `de`, `pl` and `ru` are pulled but not listed, because Crowdin holds
+ * no bot translations for them yet — their files are byte-for-byte English.
+ * Importing one would put a language in front of people that says nothing in
+ * it, and `localizer` would collapse it against English anyway. Add the import
+ * when the translation exists.
  */
 export const CATALOGS = {
-    en
+    en,
+    fr,
+    uk
 } satisfies Record<string, Partial<Record<string, string>>>
 
 /** The language every other one falls back to. */

@@ -52,10 +52,25 @@ describe('rendering', () => {
 
 describe('several languages at once', () => {
     test('does not say the same thing twice', () => {
-        // Until the Ukrainian bot strings exist, `uk` renders as English. One
-        // "Upcoming shift" is right; "Upcoming shift / Upcoming shift" is the
-        // bug this collapses.
-        expect(localizer(['en', 'uk']).line('bot_announce_upcoming_title')).toBe('Upcoming shift')
+        // A language the bot does not ship renders as English, so a group
+        // running it alongside English would otherwise read "Upcoming shift /
+        // Upcoming shift" on every announcement. Deliberately an unshipped
+        // tag rather than a real one: this is about the collapsing, and
+        // pinning it to whichever language happens to be untranslated today
+        // makes the test fail the moment somebody finishes translating it.
+        expect(localizer(['en', 'zz']).line('bot_announce_upcoming_title')).toBe(
+            localizer(['en']).line('bot_announce_upcoming_title')
+        )
+    })
+
+    test('two languages that differ are both said', () => {
+        const en = localizer(['en']).line('bot_announce_upcoming_title')
+        const uk = localizer(['uk']).line('bot_announce_upcoming_title')
+
+        // Guards the catalogue as well as the join: if Ukrainian ever comes
+        // back as English, this says so rather than quietly passing.
+        expect(uk).not.toBe(en)
+        expect(localizer(['en', 'uk']).line('bot_announce_upcoming_title')).toBe(`${en} / ${uk}`)
     })
 
     test('a block composes inside each language, never across them', () => {
