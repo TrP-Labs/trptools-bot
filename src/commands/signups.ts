@@ -2,8 +2,10 @@ import { PermissionFlagsBits, SlashCommandBuilder } from 'discord.js'
 import { api } from '../api'
 import { timestamp } from '../discord/format'
 import type { Command } from '../discord/registry'
-import { reply } from '../discord/registry'
+import { reply, voice } from '../discord/registry'
 import { postSheets } from '../features/signups'
+import { clamp, LIMIT } from '../i18n'
+import { dashboardLink, describeCommand } from '../i18n/command'
 
 /**
  * Opens the staff sign-up sheets for the next shift.
@@ -12,22 +14,19 @@ import { postSheets } from '../features/signups'
  * that had to be lived with for two years.
  */
 export const command: Command = {
-    data: new SlashCommandBuilder()
-        .setName('signups')
-        .setDescription('Post the staff sign-up sheets for the next shift.')
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageEvents),
+    data: describeCommand(
+        new SlashCommandBuilder().setName('signups').setDefaultMemberPermissions(PermissionFlagsBits.ManageEvents),
+        'bot_command_signups_description'
+    ),
 
     async execute({ interaction, client, guild }) {
         await interaction.deferReply()
 
+        const l = voice(guild)
+
         if (!guild.config.signupsEnabled) {
             await interaction.editReply({
-                embeds: [
-                    reply.error(
-                        'Sign-up sheets are switched off for this group. Turn them on at ' +
-                            `${guild.siteUrl}/dashboard/${guild.groupSlug}/bot.`
-                    )
-                ]
+                embeds: [reply(l).error(l.text('bot_off_signups', { link: dashboardLink(guild, 'bot') }))]
             })
             return
         }
@@ -36,10 +35,7 @@ export const command: Command = {
         if (!shift) {
             await interaction.editReply({
                 embeds: [
-                    reply.error(
-                        'There is no upcoming shift to open sign-ups for. Add one at ' +
-                            `${guild.siteUrl}/dashboard/${guild.groupSlug}/shifts.`
-                    )
+                    reply(l).error(l.text('bot_nothing_to_open_signups_for', { link: dashboardLink(guild, 'shifts') }))
                 ]
             })
             return
@@ -50,10 +46,16 @@ export const command: Command = {
         if (!shift.signupsOpen) {
             await interaction.editReply({
                 embeds: [
-                    reply.error(
-                        `Sign-ups for **${shift.name}** open ${timestamp(shift.signupsOpenAt, 'R')} ` +
-                            `(${timestamp(shift.signupsOpenAt, 'F')}).\n\n` +
-                            'Change how far ahead they open in group settings on the website.'
+                    reply(l).error(
+                        l.block((t) => [
+                            t('bot_signups_not_yet', {
+                                name: shift.name,
+                                relative: timestamp(shift.signupsOpenAt, 'R'),
+                                at: timestamp(shift.signupsOpenAt, 'F')
+                            }),
+                            '',
+                            t('bot_signups_change_lead')
+                        ])
                     )
                 ]
             })
@@ -63,12 +65,7 @@ export const command: Command = {
         const occurrence = await api.occurrence(guild.guildId, shift.eventId, shift.start)
         if (!occurrence || occurrence.sheets.length === 0) {
             await interaction.editReply({
-                embeds: [
-                    reply.error(
-                        'No rank has a sign-up sheet set up yet. Sign-ups are per rank — add one at ' +
-                            `${guild.siteUrl}/dashboard/${guild.groupSlug}/ranks.`
-                    )
-                ]
+                embeds: [reply(l).error(l.text('bot_signups_no_sheets', { link: dashboardLink(guild, 'ranks') }))]
             })
             return
         }
@@ -78,24 +75,31 @@ export const command: Command = {
         if (outcome.posted.length === 0) {
             await interaction.editReply({
                 embeds: [
-                    reply.error(
-                        ['No sheet could be posted:', ...outcome.skipped.map((entry) => `• **${entry.sheet.name}** — ${entry.reason}`)].join(
-                            '\n'
-                        )
+                    reply(l).error(
+                        l.block((t) => [
+                            t('bot_signups_none_posted'),
+                            ...outcome.skipped.map(
+                                (entry) =>
+                                    `• ${t('bot_signups_skipped_entry', {
+                                        sheet: entry.sheet.name,
+                                        reason: t(entry.reason)
+                                    })}`
+                            )
+                        ])
                     )
                 ]
             })
             return
         }
 
-        const embed = reply
+        const embed = reply(l)
             .success(
-                'Sign-ups are open',
-                `For **${shift.name}** on ${timestamp(shift.start, 'F')}.`
+                l.line('bot_signups_open_title'),
+                l.text('bot_signups_open_body', { name: shift.name, at: timestamp(shift.start, 'F') })
             )
             .addFields(
                 outcome.posted.map((entry) => ({
-                    name: entry.sheet.name,
+                    name: clamp(entry.sheet.name, LIMIT.embedFieldName),
                     value: `<#${entry.channelId}>`,
                     inline: true
                 }))
@@ -103,8 +107,15 @@ export const command: Command = {
 
         if (outcome.skipped.length > 0) {
             embed.addFields({
-                name: 'Not posted',
-                value: outcome.skipped.map((entry) => `**${entry.sheet.name}** — ${entry.reason}`).join('\n'),
+                name: clamp(l.line('bot_signups_not_posted'), LIMIT.embedFieldName),
+                value: clamp(
+                    l.block((t) =>
+                        outcome.skipped.map((entry) =>
+                            t('bot_signups_skipped_entry', { sheet: entry.sheet.name, reason: t(entry.reason) })
+                        )
+                    ),
+                    LIMIT.embedFieldValue
+                ),
                 inline: false
             })
         }

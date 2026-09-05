@@ -1,7 +1,9 @@
 import { SlashCommandBuilder } from 'discord.js'
 import { api } from '../api'
 import type { Command } from '../discord/registry'
-import { reply } from '../discord/registry'
+import { englishOnly, reply } from '../discord/registry'
+import { localizer } from '../i18n'
+import { describeCommand } from '../i18n/command'
 
 /**
  * Latency to Discord and reachability of the API.
@@ -13,12 +15,11 @@ import { reply } from '../discord/registry'
 export const command: Command = {
     needsGuild: false,
 
-    data: new SlashCommandBuilder()
-        .setName('ping')
-        .setDescription('Check that the bot can reach Discord and TrP Tools.'),
+    data: describeCommand(new SlashCommandBuilder().setName('ping'), 'bot_command_ping_description'),
 
     async execute({ interaction }) {
-        const sent = await interaction.reply({ content: 'Pinging…', withResponse: true })
+        // English until the group is known, since finding out *is* the command.
+        const sent = await interaction.reply({ content: englishOnly.first('bot_ping_pinging'), withResponse: true })
         const roundtrip = (sent.resource?.message?.createdTimestamp ?? Date.now()) - interaction.createdTimestamp
 
         const startedAt = Date.now()
@@ -27,21 +28,20 @@ export const command: Command = {
 
         // A guild that resolves proves the API answered; the read is scoped to
         // this server, so a null here means unreachable *or* unconfigured, and
-        // those are worded apart.
-        const reachable = guild !== null
+        // those are worded apart. It also finally tells us which languages this
+        // server speaks, so the answer can be given in them.
+        const l = guild ? localizer(guild.config.languages) : englishOnly
 
         await interaction.editReply({
             content: '',
             embeds: [
-                reply.info(
-                    'Pong',
-                    [
-                        `Discord roundtrip: **${roundtrip}ms**`,
-                        `TrP Tools: ${reachable ? `**reachable** (${apiLatency}ms)` : '**not answering for this server**'}`,
-                        reachable
-                            ? `Connected to **${guild.groupName}**`
-                            : 'Either this server is not connected to a group yet, or the API is down.'
-                    ].join('\n')
+                reply(l).info(
+                    l.line('bot_ping_title'),
+                    l.block((t) => [
+                        t('bot_ping_roundtrip', { ms: roundtrip }),
+                        guild ? t('bot_ping_api_reachable', { ms: apiLatency }) : t('bot_ping_api_unreachable'),
+                        guild ? t('bot_ping_connected_to', { group: guild.groupName }) : t('bot_ping_not_connected')
+                    ])
                 )
             ]
         })

@@ -7,6 +7,7 @@ import type {
 } from 'discord.js'
 import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from 'discord.js'
 import type { Guild } from '../api'
+import { clamp, LIMIT, localizer, type Localizer } from '../i18n'
 
 export type CommandData =
     | SlashCommandBuilder
@@ -49,19 +50,55 @@ export interface ComponentHandler {
     execute: (interaction: Interaction, client: Client) => Promise<void>
 }
 
-/** Consistent embeds for the three things every command needs to say. */
-export const reply = {
-    error: (description: string) =>
-        new EmbedBuilder().setColor(0xa83232).setTitle('Cannot do that').setDescription(description),
+/**
+ * How a group's messages are worded, from the group itself.
+ *
+ * Every command reaches for this rather than calling `localizer` directly, so
+ * there is one answer to "which languages does this server speak" and no
+ * command can quietly disagree with the others about it.
+ */
+export function voice(guild: Guild): Localizer {
+    return localizer(guild.config.languages)
+}
 
-    success: (title: string, description?: string) => {
-        const embed = new EmbedBuilder().setColor(0x3fb950).setTitle(title)
-        return description ? embed.setDescription(description) : embed
-    },
+/**
+ * English, for the two answers given before a group is known.
+ *
+ * `/ping` on an unconfigured server and "this server is not connected" both
+ * happen with nothing to read a language list from. English is not a good
+ * answer, it is the only one available.
+ */
+export const englishOnly: Localizer = localizer(null)
 
-    info: (title: string, description?: string) => {
-        const embed = new EmbedBuilder().setColor(0x4287f5).setTitle(title)
-        return description ? embed.setDescription(description) : embed
+/**
+ * Consistent embeds for the three things every command needs to say.
+ *
+ * Bound to a group's languages rather than free functions, because the error
+ * heading is itself a message: `reply(l).error(...)` cannot forget to render
+ * "Cannot do that" in the same languages as the sentence underneath it.
+ *
+ * Titles and descriptions are clamped rather than trusted. A group running
+ * four languages renders four copies of every string, and Discord refuses a
+ * message whose title runs past 256 characters instead of trimming it — so
+ * an overlong title would be an announcement that silently never posts.
+ */
+export function reply(l: Localizer) {
+    return {
+        error: (description: string) =>
+            new EmbedBuilder()
+                .setColor(0xa83232)
+                .setTitle(clamp(l.line('bot_common_cannot_do_that'), LIMIT.embedTitle))
+                .setDescription(clamp(description, LIMIT.embedDescription)),
+
+        success: (title: string, description?: string) => {
+            const embed = new EmbedBuilder().setColor(0x3fb950).setTitle(clamp(title, LIMIT.embedTitle))
+            return description ? embed.setDescription(clamp(description, LIMIT.embedDescription)) : embed
+        },
+
+        info: (title: string, description?: string) => {
+            const embed = new EmbedBuilder().setColor(0x4287f5).setTitle(clamp(title, LIMIT.embedTitle))
+            return description ? embed.setDescription(clamp(description, LIMIT.embedDescription)) : embed
+        }
     }
 }
 

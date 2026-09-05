@@ -69,6 +69,45 @@ sheet already lives in a channel their Discord role gates, so demanding they
 register first would make the Discord half useless. If they later link a Discord
 account to their TrP Tools one, both halves show them as one person.
 
+## Languages
+
+A group picks an **ordered list of languages** on the dashboard's Bot page, and
+every message the bot sends is rendered in all of them at once — a title comes
+out as `Upcoming shift / Наступна зміна`, a description as one stanza per
+language. One message rather than one per language: several would double the
+pings, double the end-of-shift cleanup, and put the same sign-up sheet in a
+channel twice, while a reader would still have to find their own copy.
+
+Three things are deliberately not rendered that way:
+
+- **Slash-command descriptions.** Discord shows these in each reader's own
+  client language and knows nothing about a server's list, so the translations
+  are handed to Discord instead (`src/i18n/command.ts`) and everybody gets one
+  language — theirs. The command *names* stay English: they are what people
+  type, and a translated `/begin` would make every guide to the bot wrong.
+- **The `/edit-shift` form and the satisfaction poll.** Discord caps a modal
+  label at 45 characters and a poll answer at 55. Four languages in one label
+  leaves all four cut off, which serves nobody better than the group's first
+  language does.
+- **Anything the group wrote themselves** — shift names, notes, sheet
+  descriptions. Those are their words in their language, and the bot has no
+  business restating them.
+
+Strings live in [TrP-Labs/Locales](https://github.com/TrP-Labs/Locales) as
+`locales/<lang>/bot.jsonc`, alongside the website's. Bring translations in and
+ship a language with:
+
+```bash
+./scripts/pull-locales.sh          # writes messages/<lang>.json
+# then import the new locale in src/i18n/catalog.ts and commit both
+```
+
+That second step is the switch: a language is pulled whenever Crowdin has
+anything for it, and *shipped* only once somebody decides the translation is
+complete enough. A key nobody has translated falls back to English on its own,
+so a partial language is safe — and a language that renders identically to one
+already in the list is collapsed rather than printed twice.
+
 ## Automation
 
 Every action can fire on its own, with its own lead time, set per group in the
@@ -133,7 +172,12 @@ bun test src
 ```
 
 Covers custom-id encoding, which carries a component's entire state in the 100
-characters Discord allows and has no other safety net.
+characters Discord allows and has no other safety net; the settings rules that
+decide what gets cleared and what gets pinged; and the multi-language renderer,
+where every rule is one that fails quietly when it is backwards.
+
+Nothing in the test tree imports `src/env.ts`, which validates the environment
+at import time and exits — tests would pass locally and take CI down with it.
 
 ## Deploying
 
