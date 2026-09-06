@@ -1,5 +1,6 @@
 import en from '../../messages/en.json'
 import fr from '../../messages/fr.json'
+import ru from '../../messages/ru.json'
 import uk from '../../messages/uk.json'
 
 /**
@@ -17,15 +18,21 @@ import uk from '../../messages/uk.json'
  * other language falls back to key by key, so a half-translated language is
  * useful rather than full of holes.
  *
- * `cs`, `de`, `pl` and `ru` are pulled but not listed, because Crowdin holds
- * no bot translations for them yet — their files are byte-for-byte English.
- * Importing one would put a language in front of people that says nothing in
- * it, and `localizer` would collapse it against English anyway. Add the import
- * when the translation exists.
+ * `cs`, `de` and `pl` are pulled but not listed, because Crowdin holds no bot
+ * translations for them yet — their files are byte-for-byte English. Importing
+ * one would put a language in front of people that says nothing in it, and
+ * `localizer` would collapse it against English anyway. Add the import when the
+ * translation exists.
+ *
+ * German is the case that shows why this list is not the website's: it ships as
+ * an interface language there at roughly two fifths, and holds nothing at all
+ * here. The two catalogues are translated on separate queues, so a language
+ * arrives in one long before the other.
  */
 export const CATALOGS = {
     en,
     fr,
+    ru,
     uk
 } satisfies Record<string, Partial<Record<string, string>>>
 
