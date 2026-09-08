@@ -19,10 +19,13 @@ export function mentionRole(roleId: string | null): string {
 /**
  * How to name someone in a sheet.
  *
- * Discord sign-ups render as a real mention so the person is notified when the
- * shift starts. Website sign-ups have no Discord id to mention, so they show
- * their TrPTools display name instead — a sheet that silently omitted them
- * would make the two halves disagree about who is on shift.
+ * A sign-up renders as a real mention whenever a Discord id is known, so the
+ * person is notified when the shift starts — and that includes somebody who
+ * signed up *on the website*, because the API resolves their connected
+ * account and sends its id along with the row. Only a website sign-up from an
+ * account with no Discord connected falls back to a display name; a sheet that
+ * silently omitted them would make the two halves disagree about who is on
+ * shift.
  */
 export function mentionPerson(person: SignupPerson, l: Localizer): string {
     if (person.discordId) return `<@${person.discordId}>`
