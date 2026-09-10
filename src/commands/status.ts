@@ -108,11 +108,16 @@ export const command: Command = {
                               guild.sheets.map((sheet) =>
                                   t(
                                       sheet.slots.length === 1
-                                          ? 'bot_status_sheet_line_one'
-                                          : 'bot_status_sheet_line',
+                                          ? 'bot_status_sheet_ranks_one'
+                                          : 'bot_status_sheet_ranks',
                                       {
                                           sheet: sheet.name,
-                                          rank: sheet.rankName,
+                                          // Empty means the whole group, which
+                                          // is a sentence rather than a list.
+                                          ranks:
+                                              sheet.rankNames.length > 0
+                                                  ? sheet.rankNames.join(', ')
+                                                  : t('bot_status_sheet_everyone'),
                                           channel: channel(t, sheet.discordChannel),
                                           slots: sheet.slots.length
                                       }

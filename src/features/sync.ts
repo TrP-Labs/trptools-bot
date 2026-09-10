@@ -22,7 +22,7 @@ type SignupChange = {
     groupId: string
     eventId: string
     occurrence: string
-    signupId: string
+    sheetId: string
 }
 
 /**
@@ -60,7 +60,7 @@ export function startSignupSync(client: Client) {
         if (!guildId) return
 
         try {
-            await refreshSheet(client, guildId, change.eventId, change.occurrence, change.signupId)
+            await refreshSheet(client, guildId, change.eventId, change.occurrence, change.sheetId)
         } catch (error) {
             log.error('sync', 'could not redraw a sheet', error)
         }

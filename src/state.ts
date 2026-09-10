@@ -31,10 +31,10 @@ export type RecordedMessage = PostedMessage & { field: string }
 const occurrenceKey = (eventId: string, occurrence: string) =>
     `botmsg:${eventId}:${new Date(occurrence).getTime()}`
 
-const sheetField = (signupId: string) => `sheet:${signupId}`
+const sheetField = (sheetId: string) => `sheet:${sheetId}`
 
 /** The "come on in" post for one sheet, so closing the shift out clears it. */
-const staffField = (signupId: string) => `staff:${signupId}`
+const staffField = (sheetId: string) => `staff:${sheetId}`
 
 /**
  * The private server code a host typed, remembered for the occurrence.
@@ -90,14 +90,14 @@ async function get(eventId: string, occurrence: string, field: string): Promise<
 }
 
 export const state = {
-    rememberSheet: (eventId: string, occurrence: string, signupId: string, message: PostedMessage) =>
-        put(eventId, occurrence, sheetField(signupId), message),
+    rememberSheet: (eventId: string, occurrence: string, sheetId: string, message: PostedMessage) =>
+        put(eventId, occurrence, sheetField(sheetId), message),
 
-    findSheet: (eventId: string, occurrence: string, signupId: string) =>
-        get(eventId, occurrence, sheetField(signupId)),
+    findSheet: (eventId: string, occurrence: string, sheetId: string) =>
+        get(eventId, occurrence, sheetField(sheetId)),
 
-    rememberStaffPing: (eventId: string, occurrence: string, signupId: string, message: PostedMessage) =>
-        put(eventId, occurrence, staffField(signupId), message),
+    rememberStaffPing: (eventId: string, occurrence: string, sheetId: string, message: PostedMessage) =>
+        put(eventId, occurrence, staffField(sheetId), message),
 
     /** Whether any sheet's staff have already been let in for this occurrence. */
     async staffPinged(eventId: string, occurrence: string): Promise<boolean> {

@@ -242,7 +242,7 @@ export async function letStaffIn(
             await state.rememberStaffPing(
                 occurrence.shift.eventId,
                 occurrence.shift.start,
-                sheet.signupId,
+                sheet.sheetId,
                 { channelId: channel.id, messageId: message.id }
             )
 
