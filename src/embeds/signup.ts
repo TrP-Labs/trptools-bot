@@ -87,7 +87,7 @@ export function sheetComponents(guild: Guild, shift: Shift, sheet: Sheet) {
     const customId = encodeSignup({
         eventId: shift.eventId,
         occurrence: shift.start,
-        signupId: sheet.signupId
+        sheetId: sheet.sheetId
     })
 
     const options = sheet.slots.slice(0, 25).map((slot) => {

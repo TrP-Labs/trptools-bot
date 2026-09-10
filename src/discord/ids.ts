@@ -7,7 +7,7 @@
  * posted before a restart keeps working afterwards with no in-memory index to
  * rebuild.
  *
- *   signup:<eventId>:<occurrenceMs>:<signupId>
+ *   signup:<eventId>:<occurrenceMs>:<sheetId>
  *   36 + 13 + 36 + separators = 92 characters, inside the limit.
  */
 
@@ -17,27 +17,27 @@ export type SignupTarget = {
     eventId: string
     /** ISO 8601, milliseconds preserved. */
     occurrence: string
-    signupId: string
+    sheetId: string
 }
 
 export const SIGNUP_PREFIX = 'signup'
 export const EDIT_SHIFT_MODAL = 'edit-shift-submit'
 
 export function encodeSignup(target: SignupTarget): string {
-    return [SIGNUP_PREFIX, target.eventId, new Date(target.occurrence).getTime(), target.signupId].join(SEPARATOR)
+    return [SIGNUP_PREFIX, target.eventId, new Date(target.occurrence).getTime(), target.sheetId].join(SEPARATOR)
 }
 
 export function decodeSignup(customId: string): SignupTarget | null {
     const parts = customId.split(SEPARATOR)
     if (parts.length !== 4 || parts[0] !== SIGNUP_PREFIX) return null
 
-    const [, eventId, millis, signupId] = parts
-    if (!eventId || !millis || !signupId) return null
+    const [, eventId, millis, sheetId] = parts
+    if (!eventId || !millis || !sheetId) return null
 
     const time = Number(millis)
     if (!Number.isFinite(time)) return null
 
-    return { eventId, occurrence: new Date(time).toISOString(), signupId }
+    return { eventId, occurrence: new Date(time).toISOString(), sheetId }
 }
 
 /** The modal that edits a shift note carries its target the same way. */

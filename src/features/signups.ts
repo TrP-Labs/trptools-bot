@@ -53,7 +53,7 @@ export async function postSheets(client: Client, guild: Guild, shift: Shift, she
             continue
         }
 
-        const existing = await state.findSheet(shift.eventId, shift.start, sheet.signupId)
+        const existing = await state.findSheet(shift.eventId, shift.start, sheet.sheetId)
 
         if (existing) {
             const edited = await editSheet(client, guild, shift, sheet)
@@ -71,7 +71,7 @@ export async function postSheets(client: Client, guild: Guild, shift: Shift, she
                 ...sheetMessage(guild, shift, sheet)
             })
 
-            await state.rememberSheet(shift.eventId, shift.start, sheet.signupId, {
+            await state.rememberSheet(shift.eventId, shift.start, sheet.sheetId, {
                 channelId: channel.id,
                 messageId: message.id
             })
@@ -88,7 +88,7 @@ export async function postSheets(client: Client, guild: Guild, shift: Shift, she
 
 /** Redraws one already-posted sheet. Returns false if it is no longer there. */
 export async function editSheet(client: Client, guild: Guild, shift: Shift, sheet: Sheet): Promise<boolean> {
-    const posted = await state.findSheet(shift.eventId, shift.start, sheet.signupId)
+    const posted = await state.findSheet(shift.eventId, shift.start, sheet.sheetId)
     if (!posted) return false
 
     try {
@@ -111,14 +111,14 @@ export async function editSheet(client: Client, guild: Guild, shift: Shift, shee
  * Used by the realtime sync, which knows only that something changed and has
  * to read the authoritative state back rather than patch an embed blindly.
  */
-export async function refreshSheet(client: Client, guildId: string, eventId: string, occurrence: string, signupId: string) {
+export async function refreshSheet(client: Client, guildId: string, eventId: string, occurrence: string, sheetId: string) {
     const guild = await api.guild(guildId)
     if (!guild) return
 
     const current = await api.occurrence(guildId, eventId, occurrence)
     if (!current) return
 
-    const sheet = current.sheets.find((candidate) => candidate.signupId === signupId)
+    const sheet = current.sheets.find((candidate) => candidate.sheetId === sheetId)
     if (!sheet) return
 
     await editSheet(client, guild, current.shift, sheet)

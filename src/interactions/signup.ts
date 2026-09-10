@@ -67,7 +67,7 @@ export const handler: ComponentHandler = {
             return
         }
 
-        const sheet = guild.sheets.find((candidate) => candidate.signupId === target.signupId)
+        const sheet = guild.sheets.find((candidate) => candidate.sheetId === target.sheetId)
         const colour = colorOf(sheet?.color ?? '#4287f5')
 
         const outcome = l.text(OUTCOME[result.status], {
@@ -101,7 +101,7 @@ export const handler: ComponentHandler = {
         // in place, so two people clicking at once cannot leave it half right.
         try {
             const current = await api.occurrence(interaction.guildId, target.eventId, target.occurrence)
-            const updated = current?.sheets.find((candidate) => candidate.signupId === target.signupId)
+            const updated = current?.sheets.find((candidate) => candidate.sheetId === target.sheetId)
 
             if (current && updated) await editSheet(client, guild, current.shift, updated)
         } catch (error) {

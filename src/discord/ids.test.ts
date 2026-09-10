@@ -11,7 +11,7 @@ import { decodeEditShift, decodeSignup, encodeEditShift, encodeSignup } from './
 const target = {
     eventId: '9f8b0c1e-5d3a-4f2b-8c7d-1a2b3c4d5e6f',
     occurrence: '2026-08-16T18:00:00.000Z',
-    signupId: 'b00638fe-2282-4617-853f-0afeb00496d9'
+    sheetId: 'b00638fe-2282-4617-853f-0afeb00496d9'
 }
 
 describe('signup custom ids', () => {
@@ -33,7 +33,7 @@ describe('signup custom ids', () => {
     test('rejects ids belonging to something else', () => {
         expect(decodeSignup('someothercomponent')).toBeNull()
         expect(decodeSignup('signup:only:three')).toBeNull()
-        expect(decodeSignup(`signup:${target.eventId}:notanumber:${target.signupId}`)).toBeNull()
+        expect(decodeSignup(`signup:${target.eventId}:notanumber:${target.sheetId}`)).toBeNull()
     })
 })
 

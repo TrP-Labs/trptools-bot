@@ -100,10 +100,16 @@ export type SignupSlot = {
 }
 
 export type Sheet = {
-    signupId: string
-    rankId: string
-    rankName: string
-    robloxRank: number
+    sheetId: string
+    /**
+     * Who the sheet is for, in words.
+     *
+     * A list rather than a single rank: eligibility is a rank list per slot on
+     * the site now, and empty means every member of the group. Nothing here is
+     * gated on it — a sheet is gated by the channel it is posted in, as it
+     * always has been — so it is a label and never a check.
+     */
+    rankNames: string[]
     name: string
     description: string
     color: string
