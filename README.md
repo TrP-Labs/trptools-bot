@@ -170,7 +170,7 @@ can still use a Redis socket and the `bot.signup` subscription.
 ## Cloudflare Worker
 
 The Worker receives signed Discord interactions over HTTPS, sends messages
-through Discord REST, and uses a one-minute Cron Trigger to ask the API for due
+through Discord REST, and can use a one-minute Cron Trigger to ask the API for due
 actions. Cron enqueues jobs that call a portable `processDueAction` function;
 the recurrence rules and due-action claims remain in the backend. Due actions,
 board refreshes, slash command work, and website sign-up updates go through a
@@ -195,14 +195,21 @@ bunx wrangler secret put SYNC_TOKEN
 bun run worker:deploy
 ```
 
-`API_URL` must be reachable by the Worker. Set the backend's `BOT_WORKER_URL`
-to the deployed Worker origin and `BOT_WORKER_SYNC_TOKEN` to the same value as
-`SYNC_TOKEN`. Keep `BOT_SERVICE_TOKEN` identical on the backend and Worker.
-Then register `<Worker origin>/interactions` as the Discord application's
+`API_URL` must be reachable by the Worker. Keep `BOT_SERVICE_TOKEN` identical
+on the backend and Worker. The initial deployment has no Cron Trigger and the
+backend should leave `BOT_WORKER_URL` unset; this allows the HTTP endpoint and
+queue to be checked without sending automated messages or duplicating the
+Docker bot's sign-up updates.
+
+At cutover, register `<Worker origin>/interactions` as the Discord application's
 Interactions Endpoint URL and run `bun run deploy-commands` with the Discord
 credentials in your local environment. Discord validates the endpoint with a
 signed PING. Stop the Docker/Gateway bot when switching the application to HTTP
-interactions; the two interaction delivery methods are exclusive.
+interactions; the two interaction delivery methods are exclusive. Then set the
+backend's `BOT_WORKER_URL` to the Worker origin and `BOT_WORKER_SYNC_TOKEN` to
+the same value as `SYNC_TOKEN`. To enable automated jobs, change
+`triggers.crons` in `wrangler.jsonc` to `["* * * * *"]` and deploy again. Check
+the Worker queue and error logs before considering the cutover complete.
 
 `bun run worker:check` builds without publishing. The queue holds failed jobs
 for retry and sends exhausted jobs to `trptools-bot-dead`. Its consumer is

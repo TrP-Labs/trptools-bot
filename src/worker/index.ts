@@ -96,6 +96,10 @@ export default {
         configured(bindings)
         const path = new URL(request.url).pathname
 
+        if (request.method === 'GET' && (path === '/' || path === '/health')) {
+            return Response.json({ status: 'ok' })
+        }
+
         if (path === '/interactions' && request.method === 'POST') {
             assertEnv(['DISCORD_PUBLIC_KEY'])
             const signature = request.headers.get('x-signature-ed25519') ?? ''

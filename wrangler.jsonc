@@ -4,7 +4,7 @@
   "compatibility_date": "2026-09-22",
   "compatibility_flags": ["nodejs_compat"],
   "keep_vars": true,
-  "triggers": { "crons": ["* * * * *"] },
+  "triggers": { "crons": [] },
   "queues": {
     "producers": [{ "binding": "JOBS", "queue": "trptools-bot-jobs" }],
     "consumers": [{
