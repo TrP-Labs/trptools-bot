@@ -6,7 +6,7 @@ import { clamp, LIMIT, type Localizer, type ReasonKey } from '../i18n'
 import { log } from '../log'
 import { pingsUpcoming, showsJoinCode } from './rules'
 import { voice } from '../discord/registry'
-import { state } from '../state'
+import { StateUnavailableError, state } from '../state'
 
 /**
  * Shift announcements: the upcoming notice, the "starting now" post with its
@@ -41,6 +41,8 @@ export type AnnounceResult = { ok: true; channelId: string } | { ok: false; reas
 
 /** "A shift is coming up." */
 export async function announceUpcoming(client: Client, guild: Guild, shift: Shift): Promise<AnnounceResult> {
+    const existing = await state.findNotice(shift.eventId, shift.start, 'upcoming')
+    if (existing) return { ok: true, channelId: existing.channelId }
     const channel = await sendable(client, guild.config.announcementChannel)
     if (!channel) return { ok: false, reason: 'bot_reason_no_announcement_channel' }
 
@@ -83,6 +85,7 @@ export async function announceUpcoming(client: Client, guild: Guild, shift: Shif
 
         return { ok: true, channelId: channel.id }
     } catch (error) {
+        if (error instanceof StateUnavailableError) throw error
         log.error('announce', 'upcoming announcement refused', error)
         return { ok: false, reason: 'bot_reason_discord_refused' }
     }
@@ -100,6 +103,8 @@ export async function announceStart(
     shift: Shift,
     code?: string | null
 ): Promise<AnnounceResult> {
+    const existing = await state.findAnnouncement(shift.eventId, shift.start)
+    if (existing) return { ok: true, channelId: existing.channelId }
     const channel = await sendable(client, guild.config.announcementChannel)
     if (!channel) return { ok: false, reason: 'bot_reason_no_announcement_channel' }
 
@@ -150,6 +155,7 @@ export async function announceStart(
 
         return { ok: true, channelId: channel.id }
     } catch (error) {
+        if (error instanceof StateUnavailableError) throw error
         log.error('announce', 'start announcement refused', error)
         return { ok: false, reason: 'bot_reason_discord_refused' }
     }
@@ -182,6 +188,10 @@ export async function letStaffIn(
     const started = new Date(occurrence.shift.start).getTime() <= Date.now()
 
     for (const sheet of occurrence.sheets) {
+        if (await state.findStaffPing(occurrence.shift.eventId, occurrence.shift.start, sheet.sheetId)) {
+            notified.push(sheet.name)
+            continue
+        }
         const people = sheet.slots.flatMap((slot) =>
             slot.signups.map((person) => ({ slot: slot.name, person }))
         )
@@ -248,6 +258,7 @@ export async function letStaffIn(
 
             notified.push(sheet.name)
         } catch (error) {
+            if (error instanceof StateUnavailableError) throw error
             log.error('announce', `staff ping for ${sheet.name} refused`, error)
             skipped.push({ sheet: sheet.name, reason: 'bot_reason_discord_refused' })
         }
@@ -258,6 +269,8 @@ export async function letStaffIn(
 
 /** Reminds whoever hosts that a shift needs opening. */
 export async function remindHost(client: Client, guild: Guild, shift: Shift): Promise<AnnounceResult> {
+    const existing = await state.findNotice(shift.eventId, shift.start, 'host')
+    if (existing) return { ok: true, channelId: existing.channelId }
     const channel = await sendable(client, guild.config.hostChannel ?? guild.config.announcementChannel)
     if (!channel) return { ok: false, reason: 'bot_reason_no_host_channel' }
 
@@ -296,6 +309,7 @@ export async function remindHost(client: Client, guild: Guild, shift: Shift): Pr
 
         return { ok: true, channelId: channel.id }
     } catch (error) {
+        if (error instanceof StateUnavailableError) throw error
         log.error('announce', 'host reminder refused', error)
         return { ok: false, reason: 'bot_reason_discord_refused' }
     }

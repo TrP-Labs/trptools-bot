@@ -5,7 +5,7 @@ import { mentionRole } from '../discord/format'
 import { sheetMessage } from '../embeds/signup'
 import type { ReasonKey } from '../i18n'
 import { log } from '../log'
-import { state } from '../state'
+import { StateUnavailableError, state } from '../state'
 
 /**
  * Posting and maintaining sign-up sheets in Discord.
@@ -78,6 +78,7 @@ export async function postSheets(client: Client, guild: Guild, shift: Shift, she
 
             outcome.posted.push({ sheet, channelId: channel.id })
         } catch (error) {
+            if (error instanceof StateUnavailableError) throw error
             log.error('signups', `could not post ${sheet.name}`, error)
             outcome.skipped.push({ sheet, reason: 'bot_reason_discord_refused' })
         }
@@ -112,10 +113,10 @@ export async function editSheet(client: Client, guild: Guild, shift: Shift, shee
  * to read the authoritative state back rather than patch an embed blindly.
  */
 export async function refreshSheet(client: Client, guildId: string, eventId: string, occurrence: string, sheetId: string) {
-    const guild = await api.guild(guildId)
+    const guild = await api.guildStrict(guildId)
     if (!guild) return
 
-    const current = await api.occurrence(guildId, eventId, occurrence)
+    const current = await api.occurrenceStrict(guildId, eventId, occurrence)
     if (!current) return
 
     const sheet = current.sheets.find((candidate) => candidate.sheetId === sheetId)

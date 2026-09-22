@@ -2,6 +2,7 @@ node_modules
 
 # Build output
 dist
+.wrangler
 *.tsbuildinfo
 
 # Secrets — .env holds the Discord bot token and the service token

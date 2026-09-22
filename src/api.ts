@@ -160,6 +160,7 @@ export type DueAction = {
     action: 'ANNOUNCE' | 'SIGNUPS' | 'HOST_REMINDER' | 'STAFF_START' | 'BEGIN' | 'COMPLETE'
     eventId: string
     occurrence: string
+    expiresAt?: string
 }
 
 class ApiError extends Error {
@@ -207,18 +208,33 @@ async function optional<T>(path: string, init?: RequestInit): Promise<T | null> 
     }
 }
 
+async function optional404<T>(path: string): Promise<T | null> {
+    try { return await request<T>(path) }
+    catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null
+        throw error
+    }
+}
+
 const guildPath = (guildId: string) => `/bot/internal/guilds/${encodeURIComponent(guildId)}`
 
 export const api = {
     guilds: () => optional<Guild[]>('/bot/internal/guilds').then((value) => value ?? []),
+    guildsStrict: () => request<Guild[]>('/bot/internal/guilds'),
 
     guild: (guildId: string) => optional<Guild>(guildPath(guildId)),
+    guildStrict: (guildId: string) => optional404<Guild>(guildPath(guildId)),
 
     shift: (guildId: string, when: 'next' | 'current') =>
         optional<Shift | null>(`${guildPath(guildId)}/shift?when=${when}`).then((value) => value ?? null),
 
     occurrence: (guildId: string, eventId: string, occurrence: string) =>
         optional<Occurrence>(
+            `${guildPath(guildId)}/occurrence?eventId=${encodeURIComponent(eventId)}` +
+                `&occurrence=${encodeURIComponent(occurrence)}`
+        ),
+    occurrenceStrict: (guildId: string, eventId: string, occurrence: string) =>
+        optional404<Occurrence>(
             `${guildPath(guildId)}/occurrence?eventId=${encodeURIComponent(eventId)}` +
                 `&occurrence=${encodeURIComponent(occurrence)}`
         ),
@@ -239,14 +255,31 @@ export const api = {
         body: { eventId: string; occurrence: string; note: string; ownerRobloxId: string | null }
     ) => optional<string>(`${guildPath(guildId)}/note`, { method: 'PUT', body: JSON.stringify(body) }),
 
-    due: () => optional<DueAction[]>('/bot/internal/due').then((value) => value ?? []),
+    due: () => optional<DueAction[]>('/bot/internal/due/lease').then((value) => value ?? []),
+    dueStrict: () => request<DueAction[]>('/bot/internal/due/lease'),
+
+    dueCompleted: (action: DueAction) => request<boolean>(
+        `/bot/internal/due/completed?action=${encodeURIComponent(action.action)}` +
+        `&eventId=${encodeURIComponent(action.eventId)}` +
+        `&occurrence=${encodeURIComponent(action.occurrence)}`
+    ),
 
     /**
      * Hands an action back when Discord refused it, so the next poll retries
      * rather than the shift silently losing its announcement.
      */
     releaseDue: (action: DueAction) =>
-        optional<string>('/bot/internal/due/release', {
+        optional<string>('/bot/internal/due/lease/release', {
+            method: 'POST',
+            body: JSON.stringify({
+                action: action.action,
+                eventId: action.eventId,
+                occurrence: action.occurrence
+            })
+        }),
+
+    completeDue: (action: DueAction) =>
+        request<string>('/bot/internal/due/complete', {
             method: 'POST',
             body: JSON.stringify({
                 action: action.action,

@@ -12,7 +12,7 @@ import { handler as signupHandler } from './interactions/signup'
 import { env } from './env'
 import { type Localizer } from './i18n'
 import { log } from './log'
-import { redis } from './state'
+import { assertEnv } from './env'
 
 const client = createClient()
 
@@ -116,7 +116,6 @@ async function shutdown(signal: string) {
     log.info('bot', `${signal} — shutting down`)
 
     await client.destroy().catch(() => undefined)
-    await redis?.quit().catch(() => undefined)
 
     process.exit(0)
 }
@@ -124,4 +123,5 @@ async function shutdown(signal: string) {
 process.on('SIGINT', () => void shutdown('SIGINT'))
 process.on('SIGTERM', () => void shutdown('SIGTERM'))
 
+assertEnv(['DISCORD_APP_ID', 'DISCORD_BOT_TOKEN', 'BOT_SERVICE_TOKEN'])
 await client.login(env.DISCORD_BOT_TOKEN)

@@ -4,7 +4,7 @@ import { sendable } from '../discord/channels'
 import { voice } from '../discord/registry'
 import { clamp, LIMIT, type MessageKey } from '../i18n'
 import { log } from '../log'
-import { state } from '../state'
+import { StateUnavailableError, state } from '../state'
 import { wantsClearing } from './rules'
 
 /**
@@ -97,6 +97,7 @@ export async function clearShiftMessages(client: Client, guild: Guild, shift: Sh
 
 export async function postPoll(client: Client, guild: Guild, shift: Shift): Promise<boolean> {
     if (!guild.config.pollsEnabled || !guild.config.pollChannel) return false
+    if (await state.pollPosted(shift.eventId, shift.start)) return true
 
     const channel = await sendable(client, guild.config.pollChannel)
     if (!channel) return false
@@ -122,8 +123,11 @@ export async function postPoll(client: Client, guild: Guild, shift: Shift): Prom
             }
         })
 
+        await state.rememberPoll(shift.eventId, shift.start)
+
         return true
     } catch (error) {
+        if (error instanceof StateUnavailableError) throw error
         log.error('poll', 'poll refused', error)
         return false
     }
