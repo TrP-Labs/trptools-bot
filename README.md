@@ -196,10 +196,11 @@ bun run worker:deploy
 ```
 
 `API_URL` must be reachable by the Worker. Keep `BOT_SERVICE_TOKEN` identical
-on the backend and Worker. The initial deployment has no Cron Trigger and the
-backend should leave `BOT_WORKER_URL` unset; this allows the HTTP endpoint and
-queue to be checked without sending automated messages or duplicating the
-Docker bot's sign-up updates.
+on the backend and Worker. `DISCORD_APP_ID`, `DISCORD_BOT_TOKEN`, and
+`DISCORD_PUBLIC_KEY` must all belong to the same Discord application; the
+backend's Discord app ID, bot token, and client secret must belong to it too.
+For a first deployment, set `triggers.crons` to `[]` and leave the backend's
+`BOT_WORKER_URL` unset while checking the HTTP endpoint and queue.
 
 At cutover, register `<Worker origin>/interactions` as the Discord application's
 Interactions Endpoint URL and run `bun run deploy-commands` with the Discord
@@ -207,9 +208,9 @@ credentials in your local environment. Discord validates the endpoint with a
 signed PING. Stop the Docker/Gateway bot when switching the application to HTTP
 interactions; the two interaction delivery methods are exclusive. Then set the
 backend's `BOT_WORKER_URL` to the Worker origin and `BOT_WORKER_SYNC_TOKEN` to
-the same value as `SYNC_TOKEN`. To enable automated jobs, change
-`triggers.crons` in `wrangler.jsonc` to `["* * * * *"]` and deploy again. Check
-the Worker queue and error logs before considering the cutover complete.
+the same value as `SYNC_TOKEN`. The production configuration in
+`wrangler.jsonc` currently enables the one-minute cron. Check the Worker queue
+and error logs before considering the cutover complete.
 
 `bun run worker:check` builds without publishing. The queue holds failed jobs
 for retry and sends exhausted jobs to `trptools-bot-dead`. Its consumer is
