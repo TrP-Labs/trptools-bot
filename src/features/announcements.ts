@@ -1,4 +1,4 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, type Client } from 'discord.js'
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, DiscordAPIError, EmbedBuilder, type Client } from 'discord.js'
 import type { Guild, Occurrence, Shift } from '../api'
 import { sendable } from '../discord/channels'
 import { colorOf, joinLink, mentionPerson, mentionRole, shiftUrl, timestamp } from '../discord/format'
@@ -41,10 +41,24 @@ export type AnnounceResult = { ok: true; channelId: string } | { ok: false; reas
 
 /** "A shift is coming up." */
 export async function announceUpcoming(client: Client, guild: Guild, shift: Shift): Promise<AnnounceResult> {
-    const existing = await state.findNotice(shift.eventId, shift.start, 'upcoming')
-    if (existing) return { ok: true, channelId: existing.channelId }
     const channel = await sendable(client, guild.config.announcementChannel)
     if (!channel) return { ok: false, reason: 'bot_reason_no_announcement_channel' }
+
+    const existing = await state.findNotice(shift.eventId, shift.start, 'upcoming')
+    if (existing?.channelId === channel.id) {
+        try {
+            await channel.messages.fetch(existing.messageId)
+            return { ok: true, channelId: channel.id }
+        } catch (error) {
+            // A deleted post must not make every later /announce report success
+            // without posting anything. A transient Discord failure is different:
+            // sending again could create a duplicate, so surface that failure.
+            if (!(error instanceof DiscordAPIError && error.code === 10008)) {
+                log.error('announce', `could not verify upcoming announcement for guild ${guild.guildId}`, error)
+                return { ok: false, reason: 'bot_reason_discord_refused' }
+            }
+        }
+    }
 
     const l = voice(guild)
 
@@ -86,7 +100,7 @@ export async function announceUpcoming(client: Client, guild: Guild, shift: Shif
         return { ok: true, channelId: channel.id }
     } catch (error) {
         if (error instanceof StateUnavailableError) throw error
-        log.error('announce', 'upcoming announcement refused', error)
+        log.error('announce', `upcoming announcement refused for guild ${guild.guildId} in channel ${channel.id}`, error)
         return { ok: false, reason: 'bot_reason_discord_refused' }
     }
 }

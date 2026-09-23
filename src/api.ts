@@ -227,6 +227,8 @@ export const api = {
 
     shift: (guildId: string, when: 'next' | 'current') =>
         optional<Shift | null>(`${guildPath(guildId)}/shift?when=${when}`).then((value) => value ?? null),
+    shiftStrict: (guildId: string, when: 'next' | 'current') =>
+        optional404<Shift | null>(`${guildPath(guildId)}/shift?when=${when}`),
 
     occurrence: (guildId: string, eventId: string, occurrence: string) =>
         optional<Occurrence>(

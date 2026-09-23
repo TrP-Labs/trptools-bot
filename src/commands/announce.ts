@@ -24,7 +24,7 @@ export const command: Command = {
             return
         }
 
-        const shift = await api.shift(guild.guildId, 'next')
+        const shift = await api.shiftStrict(guild.guildId, 'next')
         if (!shift) {
             await interaction.editReply({
                 embeds: [reply(l).error(l.text('bot_nothing_to_announce', { link: dashboardLink(guild, 'shifts') }))]

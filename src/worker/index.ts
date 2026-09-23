@@ -48,7 +48,7 @@ async function runInteraction(raw: any, initiallyDeferred = false) {
                     await command.execute({ interaction, client })
                     return
                 }
-                const guild = await api.guild(interaction.guildId)
+                const guild = await api.guildStrict(interaction.guildId)
                 if (!guild) {
                     await interaction.reply({ embeds: [reply(englishOnly).error(englishOnly.text('bot_common_not_connected'))], flags: 64 })
                     return
@@ -62,10 +62,20 @@ async function runInteraction(raw: any, initiallyDeferred = false) {
                 else await interaction.reply({ embeds: [reply(englishOnly).error(englishOnly.text('bot_common_unhandled'))], flags: 64 })
             }
         } catch (error) {
-            console.error('interaction failed', error)
+            console.error('interaction failed', {
+                guildId: interaction.guildId,
+                command: raw.data?.name ?? raw.data?.custom_id ?? 'unknown',
+                error
+            })
             if (interaction.isRepliable()) {
                 try { await interaction.reply({ embeds: [reply(englishOnly).error(englishOnly.text('bot_common_unhandled'))], flags: 64 }) }
-                catch (replyError) { console.error('failure reply failed', replyError) }
+                catch (replyError) {
+                    console.error('failure reply failed', {
+                        guildId: interaction.guildId,
+                        command: raw.data?.name ?? raw.data?.custom_id ?? 'unknown',
+                        error: replyError
+                    })
+                }
             }
         }
     })()
