@@ -1,0 +1,23 @@
+{
+  "name": "trptools-bot",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-09-22",
+  "compatibility_flags": ["nodejs_compat"],
+  "keep_vars": true,
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "bot.trptools.com", "custom_domain": true }],
+  "triggers": { "crons": ["* * * * *"] },
+  "queues": {
+    "producers": [{ "binding": "JOBS", "queue": "trptools-bot-jobs" }],
+    "consumers": [{
+      "queue": "trptools-bot-jobs",
+      "max_batch_size": 1,
+      "max_batch_timeout": 0,
+      "max_concurrency": 1,
+      "max_retries": 3,
+      "dead_letter_queue": "trptools-bot-dead"
+    }]
+  },
+  "observability": { "enabled": true }
+}

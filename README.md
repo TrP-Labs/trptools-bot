@@ -157,13 +157,68 @@ privileged intent at all.
 
 ## Redis
 
-Optional, strongly recommended. It holds the mapping from a shift occurrence to
-the messages posted for it, which is what lets a sheet be edited later and
-cleared at the end. Without it the bot still posts sheets and still handles
-clicks; it just cannot find its own messages again.
+The Docker bot treats Redis as optional. It holds the mapping from a shift
+occurrence to posted messages, which lets a sheet be edited later and cleared
+at the end. Without it the bot can still post and handle clicks, but cannot
+find those messages again. The Cloudflare Worker requires Upstash REST
+credentials so its independent invocations share that state.
 
-It is also how live sign-up sync arrives — the API publishes on `bot.signup`
-and the bot redraws the one sheet that changed.
+The backend pushes sign-up changes to the Worker's signed `/signup-change`
+endpoint, which puts them on a Cloudflare Queue for delivery. The Docker bot
+can still use a Redis socket and the `bot.signup` subscription.
+
+## Cloudflare Worker
+
+The Worker receives signed Discord interactions over HTTPS, sends messages
+through Discord REST, and can use a one-minute Cron Trigger to ask the API for due
+actions. Cron enqueues jobs that call a portable `processDueAction` function;
+the recurrence rules and due-action claims remain in the backend. Due actions,
+board refreshes, slash command work, and website sign-up updates go through a
+queue. Upstash REST holds message IDs,
+join codes, and active board pointers.
+
+Deploy the matching backend update first; it adds the leased due-action API
+while keeping the Docker bot's existing endpoint. Create the two queues, then
+add the Worker secrets and deploy:
+
+```bash
+bunx wrangler queues create trptools-bot-jobs
+bunx wrangler queues create trptools-bot-dead
+bunx wrangler secret put DISCORD_APP_ID
+bunx wrangler secret put DISCORD_BOT_TOKEN
+bunx wrangler secret put DISCORD_PUBLIC_KEY
+bunx wrangler secret put API_URL
+bunx wrangler secret put BOT_SERVICE_TOKEN
+bunx wrangler secret put UPSTASH_REDIS_REST_URL
+bunx wrangler secret put UPSTASH_REDIS_REST_TOKEN
+bunx wrangler secret put SYNC_TOKEN
+bun run worker:deploy
+```
+
+`API_URL` must be reachable by the Worker. Keep `BOT_SERVICE_TOKEN` identical
+on the backend and Worker. `DISCORD_APP_ID`, `DISCORD_BOT_TOKEN`, and
+`DISCORD_PUBLIC_KEY` must all belong to the same Discord application; the
+backend's Discord app ID, bot token, and client secret must belong to it too.
+For a first deployment, set `triggers.crons` to `[]` and leave the backend's
+`BOT_WORKER_URL` unset while checking the HTTP endpoint and queue.
+
+At cutover, register `<Worker origin>/interactions` as the Discord application's
+Interactions Endpoint URL and run `bun run deploy-commands` with the Discord
+credentials in your local environment. Discord validates the endpoint with a
+signed PING. Stop the Docker/Gateway bot when switching the application to HTTP
+interactions; the two interaction delivery methods are exclusive. Then set the
+backend's `BOT_WORKER_URL` to the Worker origin and `BOT_WORKER_SYNC_TOKEN` to
+the same value as `SYNC_TOKEN`. The production configuration in
+`wrangler.jsonc` currently enables the one-minute cron. Check the Worker queue
+and error logs before considering the cutover complete.
+
+`bun run worker:check` builds without publishing. The queue holds failed jobs
+for retry and sends exhausted jobs to `trptools-bot-dead`. Its consumer is
+limited to one invocation at a time so automated Discord sends do not fan out
+across queue consumers. Message sends are
+deduplicated after their Discord IDs have been recorded; as with any external
+send, a crash in the gap between Discord accepting a message and recording its
+ID can still require manual reconciliation.
 
 ## Tests
 
@@ -176,8 +231,9 @@ characters Discord allows and has no other safety net; the settings rules that
 decide what gets cleared and what gets pinged; and the multi-language renderer,
 where every rule is one that fails quietly when it is backwards.
 
-Nothing in the test tree imports `src/env.ts`, which validates the environment
-at import time and exits — tests would pass locally and take CI down with it.
+The Worker tests exercise signed HTTP interactions, REST responses and queue
+submission without requiring production credentials. Environment validation
+runs when the bot starts or the Worker receives an event.
 
 ## Deploying
 

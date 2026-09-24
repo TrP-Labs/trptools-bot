@@ -21,7 +21,7 @@ async function carryOut(client: Client, action: DueAction, guild: Guild): Promis
     // Always fetched by id and occurrence, never by "what is next right now" —
     // an action queued a few minutes ago must still act on the shift it was
     // queued for, not on whichever one has since become the soonest.
-    const occurrence = await api.occurrence(guild.guildId, action.eventId, action.occurrence)
+    const occurrence = await api.occurrenceStrict(guild.guildId, action.eventId, action.occurrence)
     if (!occurrence) {
         log.warn('automation', `${action.action}: occurrence has gone away`)
         return true
@@ -105,7 +105,23 @@ async function carryOut(client: Client, action: DueAction, guild: Guild): Promis
     }
 }
 
-async function tick(client: Client) {
+/** One claimed action, callable from any runtime's job consumer. */
+export async function processDueAction(client: Client, action: DueAction) {
+    if (await api.dueCompleted(action)) return
+    if (action.expiresAt && Date.now() > new Date(action.expiresAt).getTime()) {
+        await api.completeDue(action)
+        return
+    }
+    const guild = await api.guildStrict(action.guildId)
+    if (!guild) {
+        await api.completeDue(action)
+        return
+    }
+    if (!await carryOut(client, action, guild)) throw new Error(`${action.action} was refused by Discord`)
+    await api.completeDue(action)
+}
+
+export async function tick(client: Client) {
     const due = await api.due()
     if (due.length === 0) return
 
@@ -118,6 +134,7 @@ async function tick(client: Client) {
 
         if (!guild) {
             log.warn('automation', `no configuration for guild ${action.guildId}`)
+            await api.releaseDue(action)
             continue
         }
 
@@ -125,6 +142,7 @@ async function tick(client: Client) {
             const done = await carryOut(client, action, guild)
 
             if (done) {
+                await api.completeDue(action)
                 log.info('automation', `${action.action} for ${guild.groupName}`)
             } else {
                 // Give it back so the next tick tries again, rather than the
@@ -139,27 +157,32 @@ async function tick(client: Client) {
 }
 
 /** Redraws any dispatch board that is currently up. */
-async function refreshBoards(client: Client) {
+export async function refreshBoards(client: Client) {
     const guilds = await api.guilds()
 
     for (const guild of guilds) {
-        if (!guild.config.manifestEnabled) continue
-
-        const tracked = await state.trackedManifest(guild.guildId)
-        if (!tracked) continue
-
-        const occurrence = await api.occurrence(guild.guildId, tracked.eventId, tracked.occurrence)
-        if (!occurrence) {
-            await state.untrackManifest(guild.guildId)
-            continue
-        }
-
-        const alive = await refreshManifest(client, guild, occurrence.shift)
-
-        // A board that cannot be drawn any more means the room closed, so stop
-        // asking. The next /begin will start a new one.
-        if (!alive) await state.untrackManifest(guild.guildId)
+        await refreshBoard(client, guild)
     }
+}
+
+/** One guild's board; a queue can distribute these independently. */
+export async function refreshBoard(client: Client, guild: Guild) {
+    if (!guild.config.manifestEnabled) return
+
+    const tracked = await state.trackedManifest(guild.guildId)
+    if (!tracked) return
+
+    const occurrence = await api.occurrenceStrict(guild.guildId, tracked.eventId, tracked.occurrence)
+    if (!occurrence) {
+        await state.untrackManifest(guild.guildId)
+        return
+    }
+
+    const alive = await refreshManifest(client, guild, occurrence.shift)
+
+    // A board that cannot be drawn any more means the room closed, so stop
+    // asking. The next /begin will start a new one.
+    if (!alive) await state.untrackManifest(guild.guildId)
 }
 
 export function startAutomation(client: Client) {

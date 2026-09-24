@@ -5,7 +5,7 @@ import { colorOf } from '../discord/format'
 import { voice } from '../discord/registry'
 import { clamp, LIMIT } from '../i18n'
 import { log } from '../log'
-import { state } from '../state'
+import { StateUnavailableError, state } from '../state'
 
 /**
  * The live dispatch board, posted under a shift's start announcement.
@@ -68,6 +68,7 @@ export async function postManifest(client: Client, guild: Guild, shift: Shift): 
 
         return true
     } catch (error) {
+        if (error instanceof StateUnavailableError) throw error
         log.error('manifest', 'could not post the board', error)
         return false
     }

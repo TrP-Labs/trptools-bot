@@ -1,4 +1,4 @@
-import { Redis } from 'ioredis'
+import { Redis } from '@upstash/redis/cloudflare'
 import { env } from './env'
 import { log } from './log'
 
@@ -11,14 +11,63 @@ import { log } from './log'
  * bookkeeping about messages, not part of the schedule, and it stops mattering
  * the moment the shift is over.
  *
- * Redis is optional. Without it the bot still posts sheets and still handles
- * clicks on them; it simply cannot find a message again later, which is why
- * every read here tolerates being unavailable.
+ * Redis is optional for the Docker bot. The Worker requires Upstash, and
+ * storage failures surface so queued work can be retried.
  */
 
-export const redis = env.REDIS_URL ? new Redis(env.REDIS_URL, { maxRetriesPerRequest: null }) : null
+export class StateUnavailableError extends Error {
+    constructor(cause: unknown) {
+        super('Bot state store unavailable', { cause })
+    }
+}
 
-redis?.on('error', (error) => log.error('redis', 'connection error', error))
+function unavailable<T>(error: unknown, fallback: T): T {
+    // Docker may run without Redis. The Worker requires Upstash: a failed read
+    // or write must fail its Queue job so Cloudflare retries the operation.
+    if (typeof Bun === 'undefined') throw new StateUnavailableError(error)
+    return fallback
+}
+
+type Store = Pick<Redis, 'hset' | 'expire' | 'hget' | 'hkeys' | 'set' | 'get' | 'hgetall' | 'del'>
+
+let client: Store | null = null
+let clientUrl = ''
+let legacy: Promise<Store> | null = null
+
+async function redis(): Promise<Store | null> {
+    if (env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN) {
+        if (!client || clientUrl !== env.UPSTASH_REDIS_REST_URL) {
+            client = new Redis({
+                url: env.UPSTASH_REDIS_REST_URL,
+                token: env.UPSTASH_REDIS_REST_TOKEN,
+                automaticDeserialization: false
+            })
+            clientUrl = env.UPSTASH_REDIS_REST_URL
+        }
+        return client
+    }
+
+    // The Docker/Bun bot can still use the compose Valkey connection. This
+    // module is loaded by Workers too, so the socket client is imported only
+    // when Bun actually selects that deployment mode.
+    if (!env.REDIS_URL || typeof Bun === 'undefined') return null
+    legacy ??= import('ioredis').then(({ Redis: SocketRedis }) => {
+        const socket = new SocketRedis(env.REDIS_URL, { maxRetriesPerRequest: null })
+        socket.on('error', (error) => log.error('redis', 'connection error', error))
+        return {
+            hset: (key: string, map: Record<string, string>) => socket.hset(key, map),
+            expire: (key: string, seconds: number) => socket.expire(key, seconds),
+            hget: (key: string, field: string) => socket.hget(key, field),
+            hkeys: (key: string) => socket.hkeys(key),
+            set: (key: string, value: unknown, options: { ex: number }) =>
+                socket.set(key, typeof value === 'string' ? value : JSON.stringify(value), 'EX', options.ex),
+            get: (key: string) => socket.get(key),
+            hgetall: (key: string) => socket.hgetall(key),
+            del: (...keys: string[]) => socket.del(...keys)
+        } as Store
+    })
+    return legacy
+}
 
 /** Long enough to outlive any shift, short enough to clean itself up. */
 const TTL = 60 * 60 * 24 * 14
@@ -47,6 +96,9 @@ const staffField = (sheetId: string) => `staff:${sheetId}`
 const codeKey = (eventId: string, occurrence: string) =>
     `botcode:${eventId}:${new Date(occurrence).getTime()}`
 
+const pollKey = (eventId: string, occurrence: string) =>
+    `botpoll:${eventId}:${new Date(occurrence).getTime()}`
+
 /** The start announcement, so the manifest can be posted under it and edited. */
 const ANNOUNCEMENT_FIELD = 'announcement'
 const MANIFEST_FIELD = 'manifest'
@@ -64,28 +116,31 @@ const NOTICE_FIELDS = { upcoming: 'upcoming', host: 'host' } as const
 export type NoticeKind = keyof typeof NOTICE_FIELDS
 
 async function put(eventId: string, occurrence: string, field: string, value: PostedMessage) {
-    if (!redis) return
+    const store = await redis()
+    if (!store) return
 
     const key = occurrenceKey(eventId, occurrence)
     try {
-        await redis.hset(key, field, `${value.channelId}:${value.messageId}`)
-        await redis.expire(key, TTL)
+        await store.hset(key, { [field]: `${value.channelId}:${value.messageId}` })
+        await store.expire(key, TTL)
     } catch (error) {
         log.error('state', 'could not record a message', error)
+        unavailable(error, undefined)
     }
 }
 
 async function get(eventId: string, occurrence: string, field: string): Promise<PostedMessage | null> {
-    if (!redis) return null
+    const store = await redis()
+    if (!store) return null
 
     try {
-        const raw = await redis.hget(occurrenceKey(eventId, occurrence), field)
+        const raw = await store.hget<string>(occurrenceKey(eventId, occurrence), field)
         if (!raw) return null
 
         const [channelId, messageId] = raw.split(':')
         return channelId && messageId ? { channelId, messageId } : null
-    } catch {
-        return null
+    } catch (error) {
+        return unavailable(error, null)
     }
 }
 
@@ -99,15 +154,19 @@ export const state = {
     rememberStaffPing: (eventId: string, occurrence: string, sheetId: string, message: PostedMessage) =>
         put(eventId, occurrence, staffField(sheetId), message),
 
+    findStaffPing: (eventId: string, occurrence: string, sheetId: string) =>
+        get(eventId, occurrence, staffField(sheetId)),
+
     /** Whether any sheet's staff have already been let in for this occurrence. */
     async staffPinged(eventId: string, occurrence: string): Promise<boolean> {
-        if (!redis) return false
+        const store = await redis()
+        if (!store) return false
 
         try {
-            const fields = await redis.hkeys(occurrenceKey(eventId, occurrence))
+            const fields = await store.hkeys(occurrenceKey(eventId, occurrence))
             return fields.some((field) => field.startsWith('staff:'))
-        } catch {
-            return false
+        } catch (error) {
+            return unavailable(error, false)
         }
     },
 
@@ -116,22 +175,28 @@ export const state = {
 
     /** Remembers the join code a host gave, for the rest of the occurrence. */
     async rememberCode(eventId: string, occurrence: string, code: string) {
-        if (!redis) return
-        await redis.set(codeKey(eventId, occurrence), code, 'EX', TTL).catch(() => undefined)
+        const store = await redis()
+        if (!store) return
+        await store.set(codeKey(eventId, occurrence), code, { ex: TTL })
+            .catch((error) => unavailable(error, undefined))
     },
 
     async findCode(eventId: string, occurrence: string): Promise<string | null> {
-        if (!redis) return null
+        const store = await redis()
+        if (!store) return null
 
         try {
-            return await redis.get(codeKey(eventId, occurrence))
-        } catch {
-            return null
+            return await store.get<string>(codeKey(eventId, occurrence))
+        } catch (error) {
+            return unavailable(error, null)
         }
     },
 
     rememberNotice: (eventId: string, occurrence: string, kind: NoticeKind, message: PostedMessage) =>
         put(eventId, occurrence, NOTICE_FIELDS[kind], message),
+
+    findNotice: (eventId: string, occurrence: string, kind: NoticeKind) =>
+        get(eventId, occurrence, NOTICE_FIELDS[kind]),
 
     findAnnouncement: (eventId: string, occurrence: string) => get(eventId, occurrence, ANNOUNCEMENT_FIELD),
 
@@ -139,6 +204,16 @@ export const state = {
         put(eventId, occurrence, MANIFEST_FIELD, message),
 
     findManifest: (eventId: string, occurrence: string) => get(eventId, occurrence, MANIFEST_FIELD),
+
+    async pollPosted(eventId: string, occurrence: string) {
+        const store = await redis()
+        return store ? Boolean(await store.get(pollKey(eventId, occurrence))) : false
+    },
+
+    async rememberPoll(eventId: string, occurrence: string) {
+        const store = await redis()
+        if (store) await store.set(pollKey(eventId, occurrence), '1', { ex: TTL })
+    },
 
     /**
      * Everything posted for one occurrence, for the end-of-shift cleanup.
@@ -148,10 +223,11 @@ export const state = {
      * a group can now choose which of those the cleanup takes down.
      */
     async allFor(eventId: string, occurrence: string): Promise<RecordedMessage[]> {
-        if (!redis) return []
+        const store = await redis()
+        if (!store) return []
 
         try {
-            const all = await redis.hgetall(occurrenceKey(eventId, occurrence))
+            const all = await store.hgetall<Record<string, string>>(occurrenceKey(eventId, occurrence)) ?? {}
 
             return Object.entries(all)
                 .map(([field, raw]) => {
@@ -159,16 +235,17 @@ export const state = {
                     return channelId && messageId ? { field, channelId, messageId } : null
                 })
                 .filter((value): value is RecordedMessage => value !== null)
-        } catch {
-            return []
+        } catch (error) {
+            return unavailable(error, [])
         }
     },
 
     async forget(eventId: string, occurrence: string) {
-        if (!redis) return
-        await redis
+        const store = await redis()
+        if (!store) return
+        await store
             .del(occurrenceKey(eventId, occurrence), codeKey(eventId, occurrence))
-            .catch(() => undefined)
+            .catch((error) => unavailable(error, undefined))
     },
 
     /**
@@ -176,25 +253,28 @@ export const state = {
      * redraw without holding the list in memory across restarts.
      */
     async trackManifest(guildId: string, eventId: string, occurrence: string) {
-        if (!redis) return
-        await redis
-            .set(`botmanifest:${guildId}`, JSON.stringify({ eventId, occurrence }), 'EX', TTL)
-            .catch(() => undefined)
+        const store = await redis()
+        if (!store) return
+        await store
+            .set(`botmanifest:${guildId}`, JSON.stringify({ eventId, occurrence }), { ex: TTL })
+            .catch((error) => unavailable(error, undefined))
     },
 
     async trackedManifest(guildId: string): Promise<{ eventId: string; occurrence: string } | null> {
-        if (!redis) return null
+        const store = await redis()
+        if (!store) return null
 
         try {
-            const raw = await redis.get(`botmanifest:${guildId}`)
-            return raw ? (JSON.parse(raw) as { eventId: string; occurrence: string }) : null
-        } catch {
-            return null
+            const raw = await store.get<string>(`botmanifest:${guildId}`)
+            return raw ? JSON.parse(raw) as { eventId: string; occurrence: string } : null
+        } catch (error) {
+            return unavailable(error, null)
         }
     },
 
     async untrackManifest(guildId: string) {
-        if (!redis) return
-        await redis.del(`botmanifest:${guildId}`).catch(() => undefined)
+        const store = await redis()
+        if (!store) return
+        await store.del(`botmanifest:${guildId}`).catch((error) => unavailable(error, undefined))
     }
 }
