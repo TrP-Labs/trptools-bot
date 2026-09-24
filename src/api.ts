@@ -163,13 +163,22 @@ export type DueAction = {
     expiresAt?: string
 }
 
-class ApiError extends Error {
+export class ApiError extends Error {
     constructor(
         readonly status: number,
-        readonly path: string
+        readonly path: string,
+        readonly retryAfterSeconds: number | null = null
     ) {
         super(`API ${path} → ${status}`)
     }
+}
+
+export function retryAfterSeconds(value: string | null, now = Date.now()): number | null {
+    if (!value) return null
+    const seconds = Number(value)
+    if (Number.isFinite(seconds) && seconds >= 0) return Math.max(1, Math.ceil(seconds))
+    const date = Date.parse(value)
+    return Number.isNaN(date) ? null : Math.max(1, Math.ceil((date - now) / 1000))
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -182,7 +191,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
         }
     })
 
-    if (!response.ok) throw new ApiError(response.status, path)
+    if (!response.ok) throw new ApiError(
+        response.status, path, retryAfterSeconds(response.headers.get('retry-after'))
+    )
     if (response.status === 204) return undefined as T
 
     // Parsed by what the API actually sent, not by assumption. Its "this
@@ -197,14 +208,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     return (await response.json()) as T
 }
 
-/** Returns null rather than throwing, for reads that are allowed to be empty. */
+/** Only a real 404 means the resource is absent. Other failures must remain visible. */
 async function optional<T>(path: string, init?: RequestInit): Promise<T | null> {
     try {
         return await request<T>(path, init)
     } catch (error) {
         if (error instanceof ApiError && error.status === 404) return null
         log.error('api', `read failed: ${path}`, error)
-        return null
+        throw error
     }
 }
 
