@@ -1,5 +1,5 @@
 import { verifyKey } from 'discord-interactions'
-import { api, type DueAction } from '../api'
+import { api, ApiError, type DueAction } from '../api'
 import { commands } from '../commands'
 import { assertEnv, configureEnv, env, type BotEnv } from '../env'
 import { processDueAction, refreshBoard } from '../features/automation'
@@ -202,7 +202,10 @@ export default {
                 message.ack()
             } catch (error) {
                 console.error('bot job failed', message.body.kind, error)
-                message.retry({ delaySeconds: 20 })
+                const delaySeconds = error instanceof ApiError && error.status === 429
+                    ? Math.max(20, Math.min(error.retryAfterSeconds ?? 60, 900))
+                    : 20
+                message.retry({ delaySeconds })
             }
         }
     }
