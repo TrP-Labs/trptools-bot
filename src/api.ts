@@ -271,11 +271,18 @@ export const api = {
     due: () => optional<DueAction[]>('/bot/internal/due/lease').then((value) => value ?? []),
     dueStrict: () => request<DueAction[]>('/bot/internal/due/lease'),
 
-    dueCompleted: (action: DueAction) => request<boolean>(
-        `/bot/internal/due/completed?action=${encodeURIComponent(action.action)}` +
-        `&eventId=${encodeURIComponent(action.eventId)}` +
-        `&occurrence=${encodeURIComponent(action.occurrence)}`
-    ),
+    // Elysia sends a bare boolean as text/plain. A cast to boolean would make
+    // the string "false" truthy and skip every scheduled action.
+    dueCompleted: async (action: DueAction) => {
+        const completed = await request<boolean | string>(
+            `/bot/internal/due/completed?action=${encodeURIComponent(action.action)}` +
+            `&eventId=${encodeURIComponent(action.eventId)}` +
+            `&occurrence=${encodeURIComponent(action.occurrence)}`
+        )
+        if (completed === true || completed === 'true') return true
+        if (completed === false || completed === 'false') return false
+        throw new Error('Invalid due completion response')
+    },
 
     /**
      * Hands an action back when Discord refused it, so the next poll retries

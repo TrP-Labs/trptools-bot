@@ -28,3 +28,19 @@ test('a 404 guild read still means the guild is missing', async () => {
     globalThis.fetch = (async () => new Response('Not Found', { status: 404 })) as unknown as typeof fetch
     expect(await api.guild('test')).toBeNull()
 })
+
+test('due completion parses Elysia plain-text booleans', async () => {
+    const action = {
+        guildId: 'guild', groupId: 'group', action: 'HOST_REMINDER' as const,
+        eventId: 'event', occurrence: '2026-09-25T12:00:00.000Z'
+    }
+    globalThis.fetch = (async () => new Response('false', {
+        headers: { 'content-type': 'text/plain' }
+    })) as unknown as typeof fetch
+    expect(await api.dueCompleted(action)).toBe(false)
+
+    globalThis.fetch = (async () => new Response('true', {
+        headers: { 'content-type': 'text/plain' }
+    })) as unknown as typeof fetch
+    expect(await api.dueCompleted(action)).toBe(true)
+})
