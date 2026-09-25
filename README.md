@@ -176,6 +176,8 @@ the recurrence rules and due-action claims remain in the backend. Due actions,
 board refreshes, slash command work, and website sign-up updates go through a
 queue. Upstash REST holds message IDs,
 join codes, and active board pointers.
+Each refresh tick reads active board pointers for all enabled guilds with one
+`MGET`; idle guilds are not queued for a board refresh.
 
 Deploy the matching backend update first; it adds the leased due-action API
 while keeping the Docker bot's existing endpoint. Create the two queues, then
