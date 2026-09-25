@@ -9,6 +9,7 @@ import { handler as editShift } from '../interactions/edit-shift'
 import { englishOnly, reply } from '../discord/registry'
 import { createInteraction } from './interaction'
 import { createRestClient } from './restClient'
+import { state } from '../state'
 
 type SignupChange = { groupId: string; eventId: string; occurrence: string; sheetId: string }
 type BotJob =
@@ -177,8 +178,10 @@ export default {
                 throw error
             }
             const guilds = await api.guildsStrict()
-            await sendJobs(bindings.JOBS, guilds
-                .filter((guild) => guild.config.manifestEnabled)
+            const enabled = guilds.filter((guild) => guild.config.manifestEnabled)
+            const active = await state.trackedManifests(enabled.map((guild) => guild.guildId))
+            await sendJobs(bindings.JOBS, enabled
+                .filter((guild) => active.has(guild.guildId))
                 .map((guild) => ({ kind: 'board', guildId: guild.guildId })))
         })())
     },

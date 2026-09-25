@@ -159,17 +159,20 @@ export async function tick(client: Client) {
 /** Redraws any dispatch board that is currently up. */
 export async function refreshBoards(client: Client) {
     const guilds = await api.guilds()
+    const enabled = guilds.filter((guild) => guild.config.manifestEnabled)
+    const active = await state.trackedManifests(enabled.map((guild) => guild.guildId))
 
-    for (const guild of guilds) {
-        await refreshBoard(client, guild)
+    for (const guild of enabled) {
+        const tracked = active.get(guild.guildId)
+        if (tracked) await refreshBoard(client, guild, tracked)
     }
 }
 
 /** One guild's board; a queue can distribute these independently. */
-export async function refreshBoard(client: Client, guild: Guild) {
+export async function refreshBoard(client: Client, guild: Guild, knownManifest?: { eventId: string; occurrence: string }) {
     if (!guild.config.manifestEnabled) return
 
-    const tracked = await state.trackedManifest(guild.guildId)
+    const tracked = knownManifest ?? await state.trackedManifest(guild.guildId)
     if (!tracked) return
 
     const occurrence = await api.occurrenceStrict(guild.guildId, tracked.eventId, tracked.occurrence)

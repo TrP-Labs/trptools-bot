@@ -28,7 +28,7 @@ function unavailable<T>(error: unknown, fallback: T): T {
     return fallback
 }
 
-type Store = Pick<Redis, 'hset' | 'expire' | 'hget' | 'hkeys' | 'set' | 'get' | 'hgetall' | 'del'>
+type Store = Pick<Redis, 'hset' | 'expire' | 'hget' | 'hkeys' | 'set' | 'get' | 'mget' | 'hgetall' | 'del'>
 
 let client: Store | null = null
 let clientUrl = ''
@@ -62,6 +62,7 @@ async function redis(): Promise<Store | null> {
             set: (key: string, value: unknown, options: { ex: number }) =>
                 socket.set(key, typeof value === 'string' ? value : JSON.stringify(value), 'EX', options.ex),
             get: (key: string) => socket.get(key),
+            mget: (...keys: string[]) => socket.mget(...keys),
             hgetall: (key: string) => socket.hgetall(key),
             del: (...keys: string[]) => socket.del(...keys)
         } as Store
@@ -269,6 +270,29 @@ export const state = {
             return raw ? JSON.parse(raw) as { eventId: string; occurrence: string } : null
         } catch (error) {
             return unavailable(error, null)
+        }
+    },
+
+    /** One Redis command for the whole refresh tick, including idle guilds. */
+    async trackedManifests(guildIds: string[]): Promise<Map<string, { eventId: string; occurrence: string }>> {
+        const active = new Map<string, { eventId: string; occurrence: string }>()
+        if (guildIds.length === 0) return active
+        const store = await redis()
+        if (!store) return active
+
+        try {
+            const values = await store.mget<Array<string | null>>(...guildIds.map((id) => `botmanifest:${id}`))
+            values.forEach((raw, index) => {
+                if (!raw) return
+                try {
+                    active.set(guildIds[index]!, JSON.parse(raw))
+                } catch (error) {
+                    log.warn('state', `invalid board pointer for guild ${guildIds[index]}: ${String(error)}`)
+                }
+            })
+            return active
+        } catch (error) {
+            return unavailable(error, active)
         }
     },
 
