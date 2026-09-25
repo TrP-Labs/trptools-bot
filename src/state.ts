@@ -1,6 +1,7 @@
 import { Redis } from '@upstash/redis/cloudflare'
 import { env } from './env'
 import { log } from './log'
+import { redisHash } from './redisHash'
 
 /**
  * Where the bot remembers which Discord message is which.
@@ -228,7 +229,7 @@ export const state = {
         if (!store) return []
 
         try {
-            const all = await store.hgetall<Record<string, string>>(occurrenceKey(eventId, occurrence)) ?? {}
+            const all = redisHash(await store.hgetall(occurrenceKey(eventId, occurrence)))
 
             return Object.entries(all)
                 .map(([field, raw]) => {
