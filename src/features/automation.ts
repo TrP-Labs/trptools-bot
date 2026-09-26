@@ -2,10 +2,11 @@ import type { Client } from 'discord.js'
 import { api, type DueAction, type Guild } from '../api'
 import { env } from '../env'
 import { log } from '../log'
-import { state } from '../state'
+import { state, type TrackedManifest } from '../state'
 import { announceStart, announceUpcoming, letStaffIn, remindHost } from './announcements'
 import { clearShiftMessages, postPoll } from './completion'
 import { postManifest, refreshManifest } from './manifest'
+import { boardRefreshDue, manifestPresentation } from './rules'
 import { postSheets } from './signups'
 
 /**
@@ -169,11 +170,12 @@ export async function refreshBoards(client: Client) {
 }
 
 /** One guild's board; a queue can distribute these independently. */
-export async function refreshBoard(client: Client, guild: Guild, knownManifest?: { eventId: string; occurrence: string }) {
+export async function refreshBoard(client: Client, guild: Guild, knownManifest?: TrackedManifest) {
     if (!guild.config.manifestEnabled) return
 
     const tracked = knownManifest ?? await state.trackedManifest(guild.guildId)
     if (!tracked) return
+    if (!boardRefreshDue(tracked.checkedAt, guild.config.manifestRefreshSeconds)) return
 
     const occurrence = await api.occurrenceStrict(guild.guildId, tracked.eventId, tracked.occurrence)
     if (!occurrence) {
@@ -181,11 +183,18 @@ export async function refreshBoard(client: Client, guild: Guild, knownManifest?:
         return
     }
 
-    const alive = await refreshManifest(client, guild, occurrence.shift)
+    const presentation = manifestPresentation(guild, occurrence.shift.color)
+    const result = await refreshManifest(client, guild, occurrence.shift, tracked.presentation === presentation ? tracked.etag : undefined)
 
     // A board that cannot be drawn any more means the room closed, so stop
     // asking. The next /begin will start a new one.
-    if (!alive) await state.untrackManifest(guild.guildId)
+    if (!result.alive) await state.untrackManifest(guild.guildId)
+    else {
+        // A new post stores its own pointer and validator.
+        if (!result.reposted) await state.trackManifest(guild.guildId, tracked.eventId, tracked.occurrence, {
+            checkedAt: Date.now(), etag: result.etag, presentation
+        })
+    }
 }
 
 export function startAutomation(client: Client) {

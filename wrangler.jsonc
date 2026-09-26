@@ -9,9 +9,19 @@
   "routes": [{ "pattern": "bot.trptools.com", "custom_domain": true }],
   "triggers": { "crons": ["* * * * *"] },
   "queues": {
-    "producers": [{ "binding": "JOBS", "queue": "trptools-bot-jobs" }],
+    "producers": [
+      { "binding": "JOBS", "queue": "trptools-bot-jobs" },
+      { "binding": "INTERACTIONS", "queue": "trptools-bot-interactions" }
+    ],
     "consumers": [{
       "queue": "trptools-bot-jobs",
+      "max_batch_size": 10,
+      "max_batch_timeout": 1,
+      "max_concurrency": 1,
+      "max_retries": 3,
+      "dead_letter_queue": "trptools-bot-dead"
+    }, {
+      "queue": "trptools-bot-interactions",
       "max_batch_size": 1,
       "max_batch_timeout": 0,
       "max_concurrency": 1,

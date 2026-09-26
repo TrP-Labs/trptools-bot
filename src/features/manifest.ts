@@ -1,9 +1,11 @@
 import { AttachmentBuilder, EmbedBuilder, type Client } from 'discord.js'
 import { api, type Guild, type Shift } from '../api'
+import { editPosted, missingMessage } from '../discord/messages'
 import { sendable } from '../discord/channels'
 import { colorOf } from '../discord/format'
 import { voice } from '../discord/registry'
 import { clamp, LIMIT } from '../i18n'
+import { manifestPresentation } from './rules'
 import { log } from '../log'
 import { StateUnavailableError, state } from '../state'
 
@@ -40,23 +42,30 @@ function manifestEmbed(guild: Guild, shift: Shift): EmbedBuilder {
 }
 
 /** Posts the board, or does nothing when no room is open yet. */
-export async function postManifest(client: Client, guild: Guild, shift: Shift): Promise<boolean> {
+export async function postManifest(client: Client, guild: Guild, shift: Shift, replaceMissing = false): Promise<boolean> {
     if (!guild.config.manifestEnabled) return false
 
-    const image = await api.manifest(guild.guildId)
-    if (!image) return false
-
-    const anchor = await state.findAnnouncement(shift.eventId, shift.start)
-    if (!anchor) return false
+    if (!replaceMissing && await state.findManifest(shift.eventId, shift.start)) {
+        const tracked = await state.trackedManifest(guild.guildId)
+        if (!tracked || tracked.eventId !== shift.eventId || tracked.occurrence !== shift.start) {
+            await state.trackManifest(guild.guildId, shift.eventId, shift.start, { checkedAt: Date.now() })
+        }
+        return true
+    }
+    const [image, anchor] = await Promise.all([
+        api.manifest(guild.guildId), state.findAnnouncement(shift.eventId, shift.start)
+    ])
+    if (image.status !== 'changed') return false
+    if (!anchor) throw new Error('The live board has no recorded announcement')
 
     try {
         const channel = await sendable(client, anchor.channelId)
-        if (!channel) return false
+        if (!channel) throw new Error('The live board channel is unavailable')
 
         const message = await channel.send({
             reply: { messageReference: anchor.messageId, failIfNotExists: false },
             embeds: [manifestEmbed(guild, shift)],
-            files: [new AttachmentBuilder(image, { name: FILENAME })]
+            files: [new AttachmentBuilder(image.image, { name: FILENAME })]
         })
 
         await state.rememberManifest(shift.eventId, shift.start, {
@@ -64,13 +73,13 @@ export async function postManifest(client: Client, guild: Guild, shift: Shift): 
             messageId: message.id
         })
 
-        await state.trackManifest(guild.guildId, shift.eventId, shift.start)
+        await state.trackManifest(guild.guildId, shift.eventId, shift.start, { checkedAt: Date.now(), etag: image.etag, presentation: manifestPresentation(guild, shift.color) })
 
         return true
     } catch (error) {
         if (error instanceof StateUnavailableError) throw error
         log.error('manifest', 'could not post the board', error)
-        return false
+        throw error
     }
 }
 
@@ -80,30 +89,26 @@ export async function postManifest(client: Client, guild: Guild, shift: Shift): 
  * Returns false once the room has closed, which is the refresh loop's signal
  * to stop tracking this occurrence.
  */
-export async function refreshManifest(client: Client, guild: Guild, shift: Shift): Promise<boolean> {
+export async function refreshManifest(client: Client, guild: Guild, shift: Shift, etag?: string): Promise<{ alive: boolean; etag?: string; reposted?: boolean }> {
     const posted = await state.findManifest(shift.eventId, shift.start)
-    if (!posted) return postManifest(client, guild, shift)
+    if (!posted) return { alive: await postManifest(client, guild, shift, true), reposted: true }
 
-    const image = await api.manifest(guild.guildId)
-    if (!image) return false
+    const image = await api.manifest(guild.guildId, etag)
+    if (image.status === 'closed') return { alive: false }
+    if (image.status === 'unchanged') return { alive: true, etag: image.etag }
 
     try {
-        const channel = await client.channels.fetch(posted.channelId)
-        if (!channel?.isTextBased()) return false
-
-        const message = await channel.messages.fetch(posted.messageId)
-
         // The attachment is replaced wholesale; Discord has no way to swap the
         // bytes behind an existing one.
-        await message.edit({
+        await editPosted(client, posted, {
             embeds: [manifestEmbed(guild, shift)],
-            files: [new AttachmentBuilder(image, { name: FILENAME })],
+            files: [new AttachmentBuilder(image.image, { name: FILENAME })],
             attachments: []
         })
 
-        return true
+        return { alive: true, etag: image.etag }
     } catch (error) {
-        log.warn('manifest', 'could not redraw the board', error)
-        return false
+        if (missingMessage(error)) return { alive: await postManifest(client, guild, shift, true), reposted: true }
+        throw error
     }
 }

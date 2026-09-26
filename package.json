@@ -10,7 +10,7 @@
     "deploy-commands": "bun run src/deploy-commands.ts",
     "worker:dev": "wrangler dev",
     "worker:deploy": "bun run typecheck && bun test src && bun run worker:check && wrangler deploy",
-    "worker:check": "wrangler deploy --dry-run --outdir dist/worker",
+    "worker:check": "WRANGLER_LOG_PATH=/tmp/trptools-bot-wrangler-build.log wrangler deploy --dry-run --outdir dist/worker",
     "typecheck": "tsc --noEmit",
     "test": "bun test src"
   },

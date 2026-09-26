@@ -44,3 +44,16 @@ test('due completion parses Elysia plain-text booleans', async () => {
     })) as unknown as typeof fetch
     expect(await api.dueCompleted(action)).toBe(true)
 })
+
+test('conditional manifests distinguish unchanged boards, closed rooms, and retryable failures', async () => {
+    let status = 304
+    globalThis.fetch = (async (_url: unknown, init: RequestInit) => {
+        expect(new Headers(init.headers).get('if-none-match')).toBe('W/"board"')
+        return new Response(null, { status })
+    }) as unknown as typeof fetch
+    expect(await api.manifest('guild', 'W/"board"')).toEqual({ status: 'unchanged', etag: 'W/"board"' })
+    status = 404
+    expect(await api.manifest('guild', 'W/"board"')).toEqual({ status: 'closed' })
+    status = 503
+    await expect(api.manifest('guild', 'W/"board"')).rejects.toBeInstanceOf(ApiError)
+})

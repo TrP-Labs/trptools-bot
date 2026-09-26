@@ -1,5 +1,6 @@
 import type { Client } from 'discord.js'
 import type { Guild, Shift } from '../api'
+import { deletePosted, missingMessage } from '../discord/messages'
 import { sendable } from '../discord/channels'
 import { voice } from '../discord/registry'
 import { clamp, LIMIT, type MessageKey } from '../i18n'
@@ -64,22 +65,10 @@ export async function clearShiftMessages(client: Client, guild: Guild, shift: Sh
         }
 
         try {
-            const channel = await client.channels.fetch(entry.channelId)
-            if (!channel?.isTextBased()) {
-                failed++
-                blocked.add(entry.channelId)
-                continue
-            }
-
-            const message = await channel.messages.fetch(entry.messageId).catch(() => null)
-
-            // Already deleted by hand is a success, not a failure — there is
-            // nothing left to do about it either way.
-            if (!message) continue
-
-            await message.delete()
+            await deletePosted(client, entry)
             removed++
         } catch (error) {
+            if (missingMessage(error)) continue
             log.warn('complete', 'could not delete a message', error)
             failed++
             blocked.add(entry.channelId)

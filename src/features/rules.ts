@@ -58,3 +58,12 @@ export function wantsClearing(field: string, guild: Guild): boolean {
     // it all live in the announcement channel.
     return guild.config.clearAnnouncements !== false
 }
+
+/** Cron and the Docker board loop both tick once a minute. */
+export function boardRefreshDue(checkedAt: number | undefined, refreshSeconds: number, now = Date.now()): boolean {
+    return !checkedAt || now - checkedAt >= Math.max(60, refreshSeconds || 60) * 1000
+}
+
+export function manifestPresentation(guild: Guild, color: string): string {
+    return JSON.stringify([guild.config.languages ?? ['en'], color])
+}

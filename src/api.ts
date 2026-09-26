@@ -1,4 +1,5 @@
 import { env } from './env'
+import { timed } from './timing'
 import { log } from './log'
 
 /**
@@ -152,6 +153,8 @@ export type SignupResult = {
     status: 'TAKEN' | 'RELEASED' | 'MOVED' | 'FULL' | 'GONE'
     slotName: string
     previousSlotName: string | null
+    syncDelivered?: boolean
+    changedSheetIds?: string[]
 }
 
 export type DueAction = {
@@ -181,7 +184,7 @@ export function retryAfterSeconds(value: string | null, now = Date.now()): numbe
     return Number.isNaN(date) ? null : Math.max(1, Math.ceil((date - now) / 1000))
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function requestUntimed<T>(path: string, init: RequestInit = {}): Promise<T> {
     const response = await fetch(`${env.API_URL}${path}`, {
         ...init,
         headers: {
@@ -208,6 +211,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     return (await response.json()) as T
 }
 
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+    return timed('api', { path: path.split('?')[0], method: init.method ?? 'GET' }, () => requestUntimed<T>(path, init))
+}
+
+export type ManifestResult = { status: 'changed'; image: Buffer; etag?: string }
+    | { status: 'unchanged'; etag?: string } | { status: 'closed' }
+
 /** Only a real 404 means the resource is absent. Other failures must remain visible. */
 async function optional<T>(path: string, init?: RequestInit): Promise<T | null> {
     try {
@@ -232,6 +242,8 @@ const guildPath = (guildId: string) => `/bot/internal/guilds/${encodeURIComponen
 export const api = {
     guilds: () => optional<Guild[]>('/bot/internal/guilds').then((value) => value ?? []),
     guildsStrict: () => request<Guild[]>('/bot/internal/guilds'),
+    guildForGroup: (groupId: string) => optional404<Guild>(`/bot/internal/groups/${encodeURIComponent(groupId)}/guild`),
+    boardGuilds: () => request<Array<{ guildId: string; manifestRefreshSeconds: number }>>('/bot/internal/boards'),
 
     guild: (guildId: string) => optional<Guild>(guildPath(guildId)),
     guildStrict: (guildId: string) => optional404<Guild>(guildPath(guildId)),
@@ -308,17 +320,16 @@ export const api = {
             })
         }),
 
-    manifest: async (guildId: string): Promise<Buffer | null> => {
-        try {
-            const response = await fetch(`${env.API_URL}${guildPath(guildId)}/manifest`, {
-                headers: { Authorization: `Bearer ${env.BOT_SERVICE_TOKEN}` }
-            })
-
-            if (!response.ok) return null
-            return Buffer.from(await response.arrayBuffer())
-        } catch (error) {
-            log.error('api', 'manifest render failed', error)
-            return null
-        }
-    }
+    manifest: (guildId: string, etag?: string): Promise<ManifestResult> => timed('api', {
+        path: `${guildPath(guildId)}/manifest`, method: 'GET'
+    }, async () => {
+        const response = await fetch(`${env.API_URL}${guildPath(guildId)}/manifest`, {
+            headers: { Authorization: `Bearer ${env.BOT_SERVICE_TOKEN}`, ...(etag ? { 'If-None-Match': etag } : {}) }
+        })
+        if (response.status === 304) return { status: 'unchanged', etag }
+        if (response.status === 404) return { status: 'closed' }
+        if (!response.ok) throw new ApiError(response.status, `${guildPath(guildId)}/manifest`,
+            retryAfterSeconds(response.headers.get('retry-after')))
+        return { status: 'changed', image: Buffer.from(await response.arrayBuffer()), etag: response.headers.get('etag') ?? undefined }
+    })
 }

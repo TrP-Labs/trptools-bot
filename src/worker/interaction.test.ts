@@ -35,6 +35,25 @@ test('HTTP interaction acknowledges through Discord and edits the original reply
     expect(calls[1]?.body).toEqual({ content: 'done' })
 })
 
+test('inline deferral removes the callback request and still permits a webhook edit', async () => {
+    const calls: string[] = []
+    const responses: unknown[] = []
+    const rest = new REST({ version: '10', makeRequest: async (url) => {
+        calls.push(String(url))
+        return Response.json({ id: '456' }) as any
+    } })
+    const { interaction, acknowledged } = createInteraction(
+        { id: '123456789012345678', token: 'token', type: 3 }, rest, false, (response) => { responses.push(response) }
+    )
+    await (interaction as any).deferReply({ flags: 64 })
+    await acknowledged
+    expect(calls).toHaveLength(0)
+    expect(responses).toEqual([{ type: 5, data: { flags: 64 } }])
+    await (interaction as any).editReply({ content: 'done' })
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toContain('/webhooks/123/token/messages/%40original')
+})
+
 test('withResponse is sent as a callback query parameter', async () => {
     const calls: Array<{ url: string; body: any }> = []
     const rest = new REST({ version: '10', makeRequest: async (url, init) => {
@@ -64,4 +83,17 @@ test('queued command resumes an already deferred interaction', async () => {
     await interaction.editReply({ content: 'done' })
     expect(calls).toHaveLength(1)
     expect(calls[0]).toContain('/webhooks/123/token/messages/%40original')
+})
+
+test('a consumer can finish before Discord has created the deferred reply', async () => {
+    let attempts = 0
+    const rest = new REST({ version: '10', makeRequest: async () => {
+        attempts++
+        return attempts === 1
+            ? Response.json({ code: 10008, message: 'Unknown Message' }, { status: 404 }) as any
+            : Response.json({ id: '456' }) as any
+    } })
+    const { interaction } = createInteraction({ id: '123456789012345678', token: 'token', type: 2 }, rest, true)
+    await (interaction as any).editReply({ content: 'done' })
+    expect(attempts).toBe(2)
 })

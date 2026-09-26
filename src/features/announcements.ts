@@ -201,8 +201,9 @@ export async function letStaffIn(
     const link = joinLink(guild, occurrence.shift, code)
     const started = new Date(occurrence.shift.start).getTime() <= Date.now()
 
+    const recorded = new Set((await state.allFor(occurrence.shift.eventId, occurrence.shift.start)).map((entry) => entry.field))
     for (const sheet of occurrence.sheets) {
-        if (await state.findStaffPing(occurrence.shift.eventId, occurrence.shift.start, sheet.sheetId)) {
+        if (recorded.has(`staff:${sheet.sheetId}`)) {
             notified.push(sheet.name)
             continue
         }

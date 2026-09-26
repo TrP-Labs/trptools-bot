@@ -176,16 +176,20 @@ the recurrence rules and due-action claims remain in the backend. Due actions,
 board refreshes, slash command work, and website sign-up updates go through a
 queue. Upstash REST holds message IDs,
 join codes, and active board pointers.
-Each refresh tick reads active board pointers for all enabled guilds with one
-`MGET`; idle guilds are not queued for a board refresh.
+Each refresh tick reads active board pointers for enabled guilds with one
+`MGET`; idle guilds and boards that have not reached their configured refresh
+interval are not queued. Unchanged boards return an ETag match before PNG
+rendering and are not uploaded to Discord. The one-minute tick means shorter
+refresh settings still refresh at most once a minute.
 
 Deploy the matching backend update first; it adds the leased due-action API
-while keeping the Docker bot's existing endpoint. Create the two queues, then
+while keeping the Docker bot's existing endpoint. Create the three queues, then
 add the Worker secrets and deploy:
 
 ```bash
 bunx wrangler queues create trptools-bot-jobs
 bunx wrangler queues create trptools-bot-dead
+bunx wrangler queues create trptools-bot-interactions
 bunx wrangler secret put DISCORD_APP_ID
 bunx wrangler secret put DISCORD_BOT_TOKEN
 bunx wrangler secret put DISCORD_PUBLIC_KEY
@@ -215,12 +219,35 @@ the same value as `SYNC_TOKEN`. The production configuration in
 and error logs before considering the cutover complete.
 
 `bun run worker:check` builds without publishing. The queue holds failed jobs
-for retry and sends exhausted jobs to `trptools-bot-dead`. Its consumer is
-limited to one invocation at a time so automated Discord sends do not fan out
-across queue consumers. Message sends are
+for retry and sends exhausted jobs to `trptools-bot-dead`. Maintenance and
+slash commands use separate queues, each limited to one
+consumer invocation at a time. A shared guild lock prevents overlapping
+message edits across those queues, and a Redis budget limits their combined
+bot-authenticated Discord traffic to 45 requests per rolling second. Discord REST
+still handles route limits. Maintenance batches coalesce sign-up changes for
+the same occurrence into one read of its current state. Message sends are
 deduplicated after their Discord IDs have been recorded; as with any external
 send, a crash in the gap between Discord accepting a message and recording its
 ID can still require manual reconciliation.
+
+For an existing Worker, deploy the backend first, create
+`trptools-bot-interactions`, then deploy the bot with the updated bindings. No
+slash-command registration or database migration is needed for this change.
+
+## Measuring latency
+
+Structured logs use `scope: job`, `api`, `redis`, and `discord`, with
+`durationMs` and `ok`. Jobs also include `kind`, `count` (coalesced messages),
+and `queueWaitMs`. Compare p50/p95 execution durations by job kind separately
+from queue wait; the HTTP response time alone does not include all background
+work. Logs omit interaction tokens, credentials, and message payloads.
+
+Stored message edits and deletions now go directly to Discord using their IDs.
+Missing messages are treated as gone, while permission and network failures
+keep the records needed for retry. Redis records each message and its expiry
+atomically in one request. A delivered signup notification owns the redraw;
+the interaction redraws locally only when notification delivery failed or an
+older backend does not report delivery.
 
 ## Tests
 

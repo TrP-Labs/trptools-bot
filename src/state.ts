@@ -1,6 +1,7 @@
 import { Redis } from '@upstash/redis/cloudflare'
 import { env } from './env'
 import { log } from './log'
+import { timed } from './timing'
 import { redisHash } from './redisHash'
 
 /**
@@ -29,7 +30,7 @@ function unavailable<T>(error: unknown, fallback: T): T {
     return fallback
 }
 
-type Store = Pick<Redis, 'hset' | 'expire' | 'hget' | 'hkeys' | 'set' | 'get' | 'mget' | 'hgetall' | 'del'>
+type Store = Pick<Redis, 'hset' | 'expire' | 'hget' | 'hkeys' | 'set' | 'get' | 'mget' | 'hgetall' | 'del' | 'eval'>
 
 let client: Store | null = null
 let clientUrl = ''
@@ -43,6 +44,13 @@ async function redis(): Promise<Store | null> {
                 token: env.UPSTASH_REDIS_REST_TOKEN,
                 automaticDeserialization: false
             })
+            const raw = client
+            client = new Proxy(raw, { get(target, property) {
+                const value = Reflect.get(target, property)
+                return typeof value === 'function'
+                    ? (...args: unknown[]) => timed('redis', { command: String(property) }, () => value.apply(target, args))
+                    : value
+            } })
             clientUrl = env.UPSTASH_REDIS_REST_URL
         }
         return client
@@ -56,6 +64,7 @@ async function redis(): Promise<Store | null> {
         const socket = new SocketRedis(env.REDIS_URL, { maxRetriesPerRequest: null })
         socket.on('error', (error) => log.error('redis', 'connection error', error))
         return {
+            eval: (script: string, keys: string[], args: string[]) => socket.eval(script, keys.length, ...keys, ...args),
             hset: (key: string, map: Record<string, string>) => socket.hset(key, map),
             expire: (key: string, seconds: number) => socket.expire(key, seconds),
             hget: (key: string, field: string) => socket.hget(key, field),
@@ -123,8 +132,8 @@ async function put(eventId: string, occurrence: string, field: string, value: Po
 
     const key = occurrenceKey(eventId, occurrence)
     try {
-        await store.hset(key, { [field]: `${value.channelId}:${value.messageId}` })
-        await store.expire(key, TTL)
+        await store.eval(`redis.call('HSET', KEYS[1], ARGV[1], ARGV[2]); redis.call('EXPIRE', KEYS[1], ARGV[3]); return 1`,
+            [key], [field, `${value.channelId}:${value.messageId}`, String(TTL)])
     } catch (error) {
         log.error('state', 'could not record a message', error)
         unavailable(error, undefined)
@@ -146,7 +155,51 @@ async function get(eventId: string, occurrence: string, field: string): Promise<
     }
 }
 
+export type TrackedManifest = { eventId: string; occurrence: string; checkedAt?: number; etag?: string; presentation?: string }
+
+export class JobBusyError extends Error {
+    readonly retryAfterSeconds = 2
+    constructor() { super('Guild is processing another bot job') }
+}
+
 export const state = {
+    async withGuildLock<T>(guildId: string, run: () => Promise<T>): Promise<T> {
+        const store = await redis()
+        if (!store) return run()
+        const key = `botlock:${guildId}`
+        const token = crypto.randomUUID()
+        // Queue invocations have a 15-minute limit. Expiry also recovers a
+        // crashed consumer; compare-and-delete cannot release its successor.
+        const acquired = await store.eval<string[], number>(
+            "return redis.call('SET', KEYS[1], ARGV[1], 'EX', 900, 'NX') and 1 or 0", [key], [token])
+        if (!Number(acquired)) throw new JobBusyError()
+        try { return await run() }
+        finally {
+            await store.eval("if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end; return 0", [key], [token])
+        }
+    },
+
+    async discordRequest() {
+        const store = await redis()
+        if (!store) return
+        // The two consumers have independent REST managers. Reserve from one
+        // rolling global budget so their combined traffic remains bounded.
+        while (true) {
+            const delay = Number(await store.eval<string[], number>(`
+                local time = redis.call('TIME')
+                local now = time[1] * 1000 + math.floor(time[2] / 1000)
+                redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now - 1000)
+                if redis.call('ZCARD', KEYS[1]) >= 45 then
+                    local first = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
+                    return math.max(1, tonumber(first[2]) + 1000 - now)
+                end
+                redis.call('ZADD', KEYS[1], now, ARGV[1])
+                redis.call('EXPIRE', KEYS[1], 2)
+                return 0`, [`botrate:${env.DISCORD_APP_ID}`], [crypto.randomUUID()]))
+            if (delay === 0) return
+            await new Promise((resolve) => setTimeout(resolve, delay))
+        }
+    },
     rememberSheet: (eventId: string, occurrence: string, sheetId: string, message: PostedMessage) =>
         put(eventId, occurrence, sheetField(sheetId), message),
 
@@ -254,29 +307,29 @@ export const state = {
      * Occurrences with a live manifest, so the refresh loop knows what to
      * redraw without holding the list in memory across restarts.
      */
-    async trackManifest(guildId: string, eventId: string, occurrence: string) {
+    async trackManifest(guildId: string, eventId: string, occurrence: string, metadata: Pick<TrackedManifest, 'checkedAt' | 'etag' | 'presentation'> = {}) {
         const store = await redis()
         if (!store) return
         await store
-            .set(`botmanifest:${guildId}`, JSON.stringify({ eventId, occurrence }), { ex: TTL })
+            .set(`botmanifest:${guildId}`, JSON.stringify({ eventId, occurrence, ...metadata }), { ex: TTL })
             .catch((error) => unavailable(error, undefined))
     },
 
-    async trackedManifest(guildId: string): Promise<{ eventId: string; occurrence: string } | null> {
+    async trackedManifest(guildId: string): Promise<TrackedManifest | null> {
         const store = await redis()
         if (!store) return null
 
         try {
             const raw = await store.get<string>(`botmanifest:${guildId}`)
-            return raw ? JSON.parse(raw) as { eventId: string; occurrence: string } : null
+            return raw ? JSON.parse(raw) as TrackedManifest : null
         } catch (error) {
             return unavailable(error, null)
         }
     },
 
     /** One Redis command for the whole refresh tick, including idle guilds. */
-    async trackedManifests(guildIds: string[]): Promise<Map<string, { eventId: string; occurrence: string }>> {
-        const active = new Map<string, { eventId: string; occurrence: string }>()
+    async trackedManifests(guildIds: string[]): Promise<Map<string, TrackedManifest>> {
+        const active = new Map<string, TrackedManifest>()
         if (guildIds.length === 0) return active
         const store = await redis()
         if (!store) return active
