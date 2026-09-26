@@ -28,7 +28,9 @@ function json(value: any): any {
 }
 
 /** Adapt Discord's signed HTTP payload to the narrow interaction API our commands use. */
-export function createInteraction(payload: Payload, rest = new REST({ version: '10' }), initiallyDeferred = false) {
+export type InlineCallback = (response: { type: number; data?: any }) => void
+
+export function createInteraction(payload: Payload, rest = new REST({ version: '10' }), initiallyDeferred = false, inline?: InlineCallback) {
     let replied = false
     let deferred = initiallyDeferred
     let acknowledging = false
@@ -41,7 +43,8 @@ export function createInteraction(payload: Payload, rest = new REST({ version: '
         acknowledging = true
         let result: unknown
         try {
-            result = await rest.post(Routes.interactionCallback(payload.id, payload.token), {
+            if (inline && !withResponse) inline(data === undefined ? { type } : { type, data: json(data) })
+            else result = await rest.post(Routes.interactionCallback(payload.id, payload.token), {
                 auth: false,
                 body: data === undefined ? { type } : { type, data: json(data) },
                 query: withResponse ? new URLSearchParams({ with_response: 'true' }) : undefined
@@ -101,10 +104,19 @@ export function createInteraction(payload: Payload, rest = new REST({ version: '
         },
         async editReply(value: any): Promise<any> {
             if (!replied && !deferred) return interaction.reply(value)
-            return rest.patch(Routes.webhookMessage(env.DISCORD_APP_ID, payload.token, '@original'), {
-                auth: false,
-                body: json(value)
-            })
+            // A queue may start before Discord has processed our inline HTTP
+            // deferral. Only that first-response race gets a short retry.
+            for (let attempt = 0; ; attempt++) {
+                try {
+                    return await rest.patch(Routes.webhookMessage(env.DISCORD_APP_ID, payload.token, '@original'), {
+                        auth: false, body: json(value)
+                    })
+                } catch (error) {
+                    const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : null
+                    if ((!initiallyDeferred && !inline) || attempt >= 4 || (code !== 10008 && code !== 10015)) throw error
+                    await new Promise((resolve) => setTimeout(resolve, 100 * 2 ** attempt))
+                }
+            }
         },
         async showModal(value: any) { await callback(9, value) }
     }

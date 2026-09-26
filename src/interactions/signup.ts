@@ -95,15 +95,18 @@ export const handler: ComponentHandler = {
             ]
         })
 
-        if (failed) return
+        if (failed || result.syncDelivered) return
 
-        // Redraw from the authoritative state rather than patching the embed
-        // in place, so two people clicking at once cannot leave it half right.
+        // The backend notification owns redraws when delivered. Fall back for
+        // an older API or an unavailable sync path, including cross-sheet moves.
         try {
             const current = await api.occurrence(interaction.guildId, target.eventId, target.occurrence)
-            const updated = current?.sheets.find((candidate) => candidate.sheetId === target.sheetId)
-
-            if (current && updated) await editSheet(client, guild, current.shift, updated)
+            if (current) {
+                const changed = result.changedSheetIds ?? [target.sheetId]
+                for (const updated of current.sheets.filter((sheet) => changed.includes(sheet.sheetId))) {
+                    await editSheet(client, guild, current.shift, updated)
+                }
+            }
         } catch (error) {
             log.error('signup', 'could not redraw the sheet', error)
         }
