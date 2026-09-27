@@ -54,3 +54,18 @@ test('a deleted upcoming post is sent again instead of being reported as announc
         state.rememberNotice = rememberNotice
     }
 })
+
+test('editing a posted announcement updates its original channel without another ping',async()=>{
+ const original=state.findNotice; const edits:any[]=[]; const channels:string[]=[]
+ state.findNotice=async()=>({channelId:'old-channel',messageId:'message'})
+ const client={channels:{fetch:async(id:string)=>{channels.push(id);return {id,isSendable:()=>true,messages:{fetch:async()=>({edit:async(payload:any)=>edits.push(payload)})},send:async()=>{throw new Error('An edit must not send a new notice')}}}}} as unknown as Client
+ const guild={guildId:'guild',groupSlug:'group',groupName:'Group',siteUrl:'https://example.com',config:{announcementChannel:'new-channel',languages:['en'],pingUpcoming:true}} as Guild
+ const shift={eventId:'event',slug:'shift',name:'Shift',description:'',note:'Updated note',color:'#4287f5',imageUrl:'https://images.example.com/shift.png',start:'2026-09-27T12:00:00Z',end:'2026-09-27T13:00:00Z'} as Shift
+ try{
+  expect(await announceUpcoming(client,guild,shift,true)).toEqual({ok:true,channelId:'old-channel'})
+  expect(channels).toEqual(['old-channel']);expect(edits).toHaveLength(1)
+  expect(edits[0].allowedMentions).toEqual({parse:[]})
+  const embed=edits[0].embeds[0].toJSON()
+  expect(embed.description).toContain('Updated note');expect(embed.image.url).toBe(shift.imageUrl)
+ }finally{state.findNotice=original}
+})

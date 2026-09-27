@@ -1,4 +1,6 @@
 import type { Client, Interaction } from 'discord.js'
+import { log } from '../log'
+import { refreshShiftMessages } from '../features/announcements'
 import { api } from '../api'
 import { decodeEditShift, EDIT_SHIFT_MODAL } from '../discord/ids'
 import { EPHEMERAL, englishOnly, reply, voice, type ComponentHandler } from '../discord/registry'
@@ -6,7 +8,7 @@ import { EPHEMERAL, englishOnly, reply, voice, type ComponentHandler } from '../
 export const handler: ComponentHandler = {
     matches: (customId) => customId.startsWith(`${EDIT_SHIFT_MODAL}:`),
 
-    async execute(interaction: Interaction, _client: Client) {
+    async execute(interaction: Interaction, client: Client) {
         if (!interaction.isModalSubmit() || !interaction.guildId) return
 
         const target = decodeEditShift(interaction.customId)
@@ -29,11 +31,14 @@ export const handler: ComponentHandler = {
             return
         }
 
+        const files = interaction.fields.getUploadedFiles('image')
+        const image = files?.first()
         const saved = await api.setNote(interaction.guildId, {
             eventId: target.eventId,
             occurrence: target.occurrence,
             note,
-            ownerRobloxId: owner || null
+            ownerRobloxId: owner || null,
+            ...(image ? { imageUrl: image.url } : {})
         })
 
         if (!saved) {
@@ -41,6 +46,10 @@ export const handler: ComponentHandler = {
             return
         }
 
+        if (guild) {
+            const occurrence = await api.occurrenceStrict(guild.guildId, target.eventId, target.occurrence)
+            if (occurrence) await refreshShiftMessages(client, guild, occurrence).catch(error => log.error('edit-shift', 'saved, but announcement refresh will retry', error))
+        }
         await interaction.editReply({
             embeds: [
                 reply(l).success(

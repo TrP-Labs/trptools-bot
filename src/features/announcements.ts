@@ -1,4 +1,4 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, DiscordAPIError, EmbedBuilder, type Client } from 'discord.js'
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, DiscordAPIError, EmbedBuilder, type Client, type MessageEditOptions } from 'discord.js'
 import type { Guild, Occurrence, Shift } from '../api'
 import { sendable } from '../discord/channels'
 import { colorOf, joinLink, mentionPerson, mentionRole, shiftUrl, timestamp } from '../discord/format'
@@ -39,13 +39,22 @@ function websiteButton(l: Localizer, guild: Guild, shift: Shift) {
  */
 export type AnnounceResult = { ok: true; channelId: string } | { ok: false; reason: ReasonKey }
 
-/** "A shift is coming up." */
-export async function announceUpcoming(client: Client, guild: Guild, shift: Shift): Promise<AnnounceResult> {
-    const channel = await sendable(client, guild.config.announcementChannel)
-    if (!channel) return { ok: false, reason: 'bot_reason_no_announcement_channel' }
+async function editExisting(channel: NonNullable<Awaited<ReturnType<typeof sendable>>>, id: string, payload: MessageEditOptions) {
+    try {
+        const message = await channel.messages.fetch(id)
+        await message.edit(payload)
+    } catch (error) {
+        // A deleted announcement has nothing to update; edits must not recreate it.
+        if (!(error instanceof DiscordAPIError && error.code === 10008)) throw error
+    }
+}
 
+/** "A shift is coming up." */
+export async function announceUpcoming(client: Client, guild: Guild, shift: Shift, refresh = false): Promise<AnnounceResult> {
     const existing = await state.findNotice(shift.eventId, shift.start, 'upcoming')
-    if (existing?.channelId === channel.id) {
+    const channel = await sendable(client, refresh && existing ? existing.channelId : guild.config.announcementChannel)
+    if (!channel) return { ok: false, reason: 'bot_reason_no_announcement_channel' }
+    if (existing?.channelId === channel.id && !refresh) {
         try {
             await channel.messages.fetch(existing.messageId)
             return { ok: true, channelId: channel.id }
@@ -85,6 +94,13 @@ export async function announceUpcoming(client: Client, guild: Guild, shift: Shif
         )
         .setFooter({ text: clamp(guild.groupName, LIMIT.embedFooter) })
 
+    if (shift.imageUrl) embed.setImage(shift.imageUrl)
+    if (refresh) {
+        if (!existing) return { ok: true, channelId: channel.id }
+        await editExisting(channel, existing.messageId, { embeds: [embed], components: [websiteButton(l, guild, shift)], allowedMentions: { parse: [] } })
+        return { ok: true, channelId: channel.id }
+    }
+
     try {
         const message = await channel.send({
             content: (pingsUpcoming(guild) ? mentionRole(guild.config.shiftPingRole) : '') || undefined,
@@ -115,11 +131,12 @@ export async function announceStart(
     client: Client,
     guild: Guild,
     shift: Shift,
-    code?: string | null
+    code?: string | null,
+    refresh = false
 ): Promise<AnnounceResult> {
     const existing = await state.findAnnouncement(shift.eventId, shift.start)
-    if (existing) return { ok: true, channelId: existing.channelId }
-    const channel = await sendable(client, guild.config.announcementChannel)
+    if (existing && !refresh) return { ok: true, channelId: existing.channelId }
+    const channel = await sendable(client, refresh && existing ? existing.channelId : guild.config.announcementChannel)
     if (!channel) return { ok: false, reason: 'bot_reason_no_announcement_channel' }
 
     const l = voice(guild)
@@ -154,6 +171,13 @@ export async function announceStart(
             inline: true
         })
         .setFooter({ text: clamp(guild.groupName, LIMIT.embedFooter) })
+
+    if (shift.imageUrl) embed.setImage(shift.imageUrl)
+    if (refresh) {
+        if (!existing) return { ok: true, channelId: channel.id }
+        await editExisting(channel, existing.messageId, { embeds: [embed], components: [websiteButton(l, guild, shift)], allowedMentions: { parse: [] } })
+        return { ok: true, channelId: channel.id }
+    }
 
     try {
         const message = await channel.send({
@@ -193,7 +217,8 @@ export async function letStaffIn(
     client: Client,
     guild: Guild,
     occurrence: Occurrence,
-    code?: string | null
+    code?: string | null,
+    refresh = false
 ): Promise<{ notified: string[]; skipped: StaffSkip[] }> {
     const notified: string[] = []
     const skipped: StaffSkip[] = []
@@ -201,9 +226,10 @@ export async function letStaffIn(
     const link = joinLink(guild, occurrence.shift, code)
     const started = new Date(occurrence.shift.start).getTime() <= Date.now()
 
-    const recorded = new Set((await state.allFor(occurrence.shift.eventId, occurrence.shift.start)).map((entry) => entry.field))
+    const messages = await state.allFor(occurrence.shift.eventId, occurrence.shift.start)
+    const recorded = new Set(messages.map(entry => entry.field))
     for (const sheet of occurrence.sheets) {
-        if (recorded.has(`staff:${sheet.sheetId}`)) {
+        if (recorded.has(`staff:${sheet.sheetId}`) && !refresh) {
             notified.push(sheet.name)
             continue
         }
@@ -216,7 +242,8 @@ export async function letStaffIn(
             continue
         }
 
-        const channel = await sendable(client, sheet.discordChannel)
+        const posted = messages.find(entry => entry.field === `staff:${sheet.sheetId}`)
+        const channel = await sendable(client, refresh && posted ? posted.channelId : sheet.discordChannel)
         if (!channel) {
             skipped.push({ sheet: sheet.name, reason: 'bot_reason_cannot_post_in_channel' })
             continue
@@ -256,6 +283,14 @@ export async function letStaffIn(
                 )
             })
 
+        if (occurrence.shift.imageUrl) embed.setImage(occurrence.shift.imageUrl)
+        if (refresh) {
+            if (posted) {
+                await editExisting(channel, posted.messageId, { embeds: [embed], allowedMentions: { parse: [] } })
+                notified.push(sheet.name)
+            }
+            continue
+        }
         try {
             const message = await channel.send({
                 // A real mention outside the embed, since Discord does not
@@ -327,5 +362,18 @@ export async function remindHost(client: Client, guild: Guild, shift: Shift): Pr
         if (error instanceof StateUnavailableError) throw error
         log.error('announce', 'host reminder refused', error)
         return { ok: false, reason: 'bot_reason_discord_refused' }
+    }
+}
+
+/** Update the posts already sent; editing a shift never sends fresh pings. */
+export async function refreshShiftMessages(client: Client, guild: Guild, occurrence: Occurrence) {
+    const shift = occurrence.shift
+    const posted = await state.allFor(shift.eventId, shift.start)
+    const code = await state.findCode(shift.eventId, shift.start)
+    if (posted.some(entry => entry.field === 'upcoming') && !(await announceUpcoming(client, guild, shift, true)).ok) throw new Error('Could not update the upcoming announcement')
+    if (posted.some(entry => entry.field === 'announcement') && !(await announceStart(client, guild, shift, code, true)).ok) throw new Error('Could not update the start announcement')
+    if (posted.some(entry => entry.field.startsWith('staff:'))) {
+        const result = await letStaffIn(client, guild, occurrence, code, true)
+        if (result.skipped.some(item => item.reason !== 'bot_reason_nobody_signed_up')) throw new Error('Could not update staff announcements')
     }
 }

@@ -1,6 +1,8 @@
 import {
     ActionRowBuilder,
     ModalBuilder,
+    LabelBuilder,
+    FileUploadBuilder,
     PermissionFlagsBits,
     SlashCommandBuilder,
     TextInputBuilder,
@@ -70,6 +72,9 @@ export const command: Command = {
                     new ActionRowBuilder<TextInputBuilder>().addComponents(note),
                     new ActionRowBuilder<TextInputBuilder>().addComponents(owner)
                 )
+                .addLabelComponents(new LabelBuilder().setLabel(clamp(t('bot_edit_shift_image_label'), LIMIT.textInputLabel)).setFileUploadComponent(
+                    new FileUploadBuilder().setCustomId('image').setRequired(false).setMaxValues(1)
+                ))
         )
     }
 }

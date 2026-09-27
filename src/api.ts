@@ -129,6 +129,7 @@ export type Shift = {
     end: string
     note: string
     ownerRobloxId: string | null
+    imageUrl?: string | null
     /** When the group's sign-up window opens, and whether it is open now. */
     signupsOpenAt: string
     signupsOpen: boolean
@@ -160,10 +161,12 @@ export type SignupResult = {
 export type DueAction = {
     guildId: string
     groupId: string
-    action: 'ANNOUNCE' | 'SIGNUPS' | 'HOST_REMINDER' | 'STAFF_START' | 'BEGIN' | 'COMPLETE'
+    action: 'ANNOUNCE' | 'SIGNUPS' | 'HOST_REMINDER' | 'STAFF_START' | 'BEGIN' | 'COMPLETE' | 'REFRESH'
     eventId: string
     occurrence: string
     expiresAt?: string
+    roomId?: string
+    timelineId?: string
 }
 
 export class ApiError extends Error {
@@ -277,9 +280,12 @@ export const api = {
 
     setNote: (
         guildId: string,
-        body: { eventId: string; occurrence: string; note: string; ownerRobloxId: string | null }
+        body: { eventId: string; occurrence: string; note: string; ownerRobloxId: string | null; imageUrl?: string | null }
     ) => optional<string>(`${guildPath(guildId)}/note`, { method: 'PUT', body: JSON.stringify(body) }),
 
+    staffAction: (guildId: string, shift: Shift, action: DueAction['action']) => request<string>('/bot/internal/staff-action', {
+        method:'POST', body:JSON.stringify({guildId,eventId:shift.eventId,occurrence:shift.start,action})
+    }),
     due: () => optional<DueAction[]>('/bot/internal/due/lease').then((value) => value ?? []),
     dueStrict: () => request<DueAction[]>('/bot/internal/due/lease'),
 
@@ -289,7 +295,7 @@ export const api = {
         const completed = await request<boolean | string>(
             `/bot/internal/due/completed?action=${encodeURIComponent(action.action)}` +
             `&eventId=${encodeURIComponent(action.eventId)}` +
-            `&occurrence=${encodeURIComponent(action.occurrence)}`
+            `&occurrence=${encodeURIComponent(action.occurrence)}` + (action.roomId ? `&roomId=${encodeURIComponent(action.roomId)}&timelineId=${encodeURIComponent(action.timelineId ?? '')}` : '')
         )
         if (completed === true || completed === 'true') return true
         if (completed === false || completed === 'false') return false
@@ -306,7 +312,9 @@ export const api = {
             body: JSON.stringify({
                 action: action.action,
                 eventId: action.eventId,
-                occurrence: action.occurrence
+                occurrence: action.occurrence,
+                roomId: action.roomId,
+                timelineId: action.timelineId
             })
         }),
 
@@ -316,7 +324,9 @@ export const api = {
             body: JSON.stringify({
                 action: action.action,
                 eventId: action.eventId,
-                occurrence: action.occurrence
+                occurrence: action.occurrence,
+                roomId: action.roomId,
+                timelineId: action.timelineId
             })
         }),
 

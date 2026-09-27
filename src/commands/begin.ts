@@ -79,6 +79,8 @@ export const command: Command = {
             return
         }
 
+        await api.staffAction(guild.guildId, shift, 'BEGIN')
+
         // Staff are let in by `/staff-begin`, normally well before this. Say so
         // if that has not happened, since it is easy to reach for `/begin`
         // alone and leave the people who signed up waiting outside.

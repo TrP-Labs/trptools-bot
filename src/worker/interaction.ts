@@ -14,7 +14,8 @@ type Payload = {
         component_type?: number
         values?: string[]
         options?: Array<{ name: string; value?: string }>
-        components?: Array<{ components?: Array<{ custom_id: string; value?: string }> }>
+        resolved?: { attachments?: Record<string, { id: string; url: string; filename: string; size: number; content_type?: string }> }
+        components?: Array<{ component?: {custom_id: string; value?: string; values?: string[]}; components?: Array<{ custom_id: string; value?: string; values?: string[] }> }>
     }
 }
 
@@ -71,8 +72,13 @@ export function createInteraction(payload: Payload, rest = new REST({ version: '
         createdTimestamp: Number((BigInt(payload.id) >> 22n) + 1420070400000n),
         options: { getString: (name: string) => data?.options?.find((option) => option.name === name)?.value ?? null },
         fields: {
-            getTextInputValue: (name: string) => data?.components?.flatMap((row) => row.components ?? [])
-                .find((field) => field.custom_id === name)?.value ?? ''
+            getTextInputValue: (name: string) => data?.components?.flatMap((row) => row.component ? [row.component] : row.components ?? [])
+                .find((field) => field.custom_id === name)?.value ?? '',
+            getUploadedFiles: (name: string) => {
+                const field = data?.components?.flatMap(row => row.component ? [row.component] : row.components ?? []).find(field => field.custom_id === name)
+                const files = (field?.values ?? []).flatMap(id => data?.resolved?.attachments?.[id] ? [data.resolved.attachments[id]!] : [])
+                return { first: () => files[0], size: files.length }
+            }
         },
         get replied() { return replied },
         get deferred() { return deferred },

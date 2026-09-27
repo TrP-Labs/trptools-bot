@@ -1,6 +1,6 @@
 {
   "name": "trptools-bot",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "private": true,
   "type": "module",
   "module": "src/index.ts",
@@ -12,7 +12,8 @@
     "worker:deploy": "bun run typecheck && bun test src && bun run worker:check && wrangler deploy",
     "worker:check": "WRANGLER_LOG_PATH=/tmp/trptools-bot-wrangler-build.log wrangler deploy --dry-run --outdir dist/worker",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src"
+    "test": "bun test src",
+    "worker:smoke": "bun run scripts/worker-smoke.ts"
   },
   "dependencies": {
     "@discordjs/rest": "^2.6.3",

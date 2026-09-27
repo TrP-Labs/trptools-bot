@@ -3,7 +3,7 @@ import { api, type DueAction, type Guild } from '../api'
 import { env } from '../env'
 import { log } from '../log'
 import { state, type TrackedManifest } from '../state'
-import { announceStart, announceUpcoming, letStaffIn, remindHost } from './announcements'
+import { announceStart, announceUpcoming, letStaffIn, remindHost, refreshShiftMessages } from './announcements'
 import { clearShiftMessages, postPoll } from './completion'
 import { postManifest, refreshManifest } from './manifest'
 import { boardRefreshDue, manifestPresentation } from './rules'
@@ -61,10 +61,10 @@ async function carryOut(client: Client, action: DueAction, guild: Guild): Promis
 
             // Nobody signed up is a fine outcome, not a failure to retry.
             if (result.notified.length === 0 && result.skipped.length > 0) {
-                log.info('automation', `staff start let nobody in: ${result.skipped.join(', ')}`)
+                log.info('automation', `staff start let nobody in: ${result.skipped.map(item => item.sheet + ': ' + item.reason).join(', ')}`)
             }
 
-            return true
+            return result.skipped.every(item => item.reason === 'bot_reason_nobody_signed_up')
         }
 
         case 'BEGIN': {
@@ -81,6 +81,10 @@ async function carryOut(client: Client, action: DueAction, guild: Guild): Promis
             return true
         }
 
+        case 'REFRESH':
+            await refreshShiftMessages(client, guild, occurrence)
+            return true
+
         case 'COMPLETE': {
             const cleared = await clearShiftMessages(client, guild, target)
 
@@ -96,9 +100,9 @@ async function carryOut(client: Client, action: DueAction, guild: Guild): Promis
                 )
             }
 
-            await postPoll(client, guild, target)
+            const polled = await postPoll(client, guild, target)
             await state.untrackManifest(guild.guildId)
-            return true
+            return cleared.failed === 0 && (!guild.config.pollsEnabled || !guild.config.pollChannel || polled)
         }
 
         default:
@@ -126,30 +130,9 @@ export async function tick(client: Client) {
     const due = await api.due()
     if (due.length === 0) return
 
-    // Guilds are fetched once per tick rather than once per action, since a
-    // busy minute is usually several actions for the same group.
-    const guilds = new Map((await api.guilds()).map((guild) => [guild.guildId, guild]))
-
     for (const action of due) {
-        const guild = guilds.get(action.guildId)
-
-        if (!guild) {
-            log.warn('automation', `no configuration for guild ${action.guildId}`)
-            await api.releaseDue(action)
-            continue
-        }
-
         try {
-            const done = await carryOut(client, action, guild)
-
-            if (done) {
-                await api.completeDue(action)
-                log.info('automation', `${action.action} for ${guild.groupName}`)
-            } else {
-                // Give it back so the next tick tries again, rather than the
-                // shift silently losing its only announcement.
-                await api.releaseDue(action)
-            }
+            await state.withGuildLock(action.guildId, () => processDueAction(client, action))
         } catch (error) {
             log.error('automation', `${action.action} threw`, error)
             await api.releaseDue(action)
