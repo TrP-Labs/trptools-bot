@@ -1,13 +1,15 @@
 # syntax=docker/dockerfile:1
 
+ARG BUN_VERSION=1.4.2
+
 # Dependencies are installed in their own stage so a source-only change does
 # not invalidate the install layer.
-FROM oven/bun:1-alpine AS deps
+FROM oven/bun:${BUN_VERSION}-alpine AS deps
 WORKDIR /app
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile
 
-FROM oven/bun:1-alpine AS runtime
+FROM oven/bun:${BUN_VERSION}-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
