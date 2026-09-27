@@ -73,7 +73,9 @@ export const command: Command = {
         const result = await letStaffIn(client, guild, occurrence, code ?? undefined)
 
         if (result.notified.length === 0) {
-            await interaction.editReply({
+            if (!result.skipped.some(entry => entry.reason === 'bot_reason_discord_refused' || entry.reason === 'bot_reason_cannot_post_in_channel')) await api.staffAction(guild.guildId, shift, 'STAFF_START')
+
+        await interaction.editReply({
                 embeds: [
                     reply(l).error(
                         l.block((t) => [

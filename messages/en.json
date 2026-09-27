@@ -172,5 +172,6 @@
 	"bot_status_running_now": "Running now: **{name}**, ends {relative}",
 	"bot_status_nothing_running": "Nothing running now",
 	"bot_status_next": "Next: **{name}** {relative}",
-	"bot_status_nothing_scheduled": "Nothing scheduled"
+	"bot_status_nothing_scheduled": "Nothing scheduled",
+	"bot_edit_shift_image_label": "Announcement image"
 }

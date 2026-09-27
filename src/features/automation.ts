@@ -3,7 +3,7 @@ import { api, type DueAction, type Guild } from '../api'
 import { env } from '../env'
 import { log } from '../log'
 import { state, type TrackedManifest } from '../state'
-import { announceStart, announceUpcoming, letStaffIn, remindHost } from './announcements'
+import { announceStart, announceUpcoming, letStaffIn, remindHost, refreshShiftMessages } from './announcements'
 import { clearShiftMessages, postPoll } from './completion'
 import { postManifest, refreshManifest } from './manifest'
 import { boardRefreshDue, manifestPresentation } from './rules'
@@ -81,6 +81,10 @@ async function carryOut(client: Client, action: DueAction, guild: Guild): Promis
             return true
         }
 
+        case 'REFRESH':
+            await refreshShiftMessages(client, guild, occurrence)
+            return true
+
         case 'COMPLETE': {
             const cleared = await clearShiftMessages(client, guild, target)
 
@@ -96,9 +100,9 @@ async function carryOut(client: Client, action: DueAction, guild: Guild): Promis
                 )
             }
 
-            await postPoll(client, guild, target)
+            const polled = await postPoll(client, guild, target)
             await state.untrackManifest(guild.guildId)
-            return true
+            return cleared.failed === 0 && (!guild.config.pollsEnabled || !guild.config.pollChannel || polled)
         }
 
         default:

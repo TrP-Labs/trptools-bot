@@ -40,12 +40,12 @@ function websiteButton(l: Localizer, guild: Guild, shift: Shift) {
 export type AnnounceResult = { ok: true; channelId: string } | { ok: false; reason: ReasonKey }
 
 /** "A shift is coming up." */
-export async function announceUpcoming(client: Client, guild: Guild, shift: Shift): Promise<AnnounceResult> {
+export async function announceUpcoming(client: Client, guild: Guild, shift: Shift, refresh = false): Promise<AnnounceResult> {
     const channel = await sendable(client, guild.config.announcementChannel)
     if (!channel) return { ok: false, reason: 'bot_reason_no_announcement_channel' }
 
     const existing = await state.findNotice(shift.eventId, shift.start, 'upcoming')
-    if (existing?.channelId === channel.id) {
+    if (existing?.channelId === channel.id && !refresh) {
         try {
             await channel.messages.fetch(existing.messageId)
             return { ok: true, channelId: channel.id }
@@ -85,6 +85,14 @@ export async function announceUpcoming(client: Client, guild: Guild, shift: Shif
         )
         .setFooter({ text: clamp(guild.groupName, LIMIT.embedFooter) })
 
+    if (shift.imageUrl) embed.setImage(shift.imageUrl)
+    if (refresh) {
+        if (!existing) return { ok: true, channelId: channel.id }
+        const message = await channel.messages.fetch(existing.messageId)
+        await message.edit({ embeds: [embed], components: [websiteButton(l, guild, shift)], allowedMentions: { parse: [] } })
+        return { ok: true, channelId: channel.id }
+    }
+
     try {
         const message = await channel.send({
             content: (pingsUpcoming(guild) ? mentionRole(guild.config.shiftPingRole) : '') || undefined,
@@ -115,10 +123,11 @@ export async function announceStart(
     client: Client,
     guild: Guild,
     shift: Shift,
-    code?: string | null
+    code?: string | null,
+    refresh = false
 ): Promise<AnnounceResult> {
     const existing = await state.findAnnouncement(shift.eventId, shift.start)
-    if (existing) return { ok: true, channelId: existing.channelId }
+    if (existing && !refresh) return { ok: true, channelId: existing.channelId }
     const channel = await sendable(client, guild.config.announcementChannel)
     if (!channel) return { ok: false, reason: 'bot_reason_no_announcement_channel' }
 
@@ -154,6 +163,14 @@ export async function announceStart(
             inline: true
         })
         .setFooter({ text: clamp(guild.groupName, LIMIT.embedFooter) })
+
+    if (shift.imageUrl) embed.setImage(shift.imageUrl)
+    if (refresh) {
+        if (!existing) return { ok: true, channelId: channel.id }
+        const message = await channel.messages.fetch(existing.messageId)
+        await message.edit({ embeds: [embed], components: [websiteButton(l, guild, shift)], allowedMentions: { parse: [] } })
+        return { ok: true, channelId: channel.id }
+    }
 
     try {
         const message = await channel.send({
@@ -193,7 +210,8 @@ export async function letStaffIn(
     client: Client,
     guild: Guild,
     occurrence: Occurrence,
-    code?: string | null
+    code?: string | null,
+    refresh = false
 ): Promise<{ notified: string[]; skipped: StaffSkip[] }> {
     const notified: string[] = []
     const skipped: StaffSkip[] = []
@@ -201,9 +219,10 @@ export async function letStaffIn(
     const link = joinLink(guild, occurrence.shift, code)
     const started = new Date(occurrence.shift.start).getTime() <= Date.now()
 
-    const recorded = new Set((await state.allFor(occurrence.shift.eventId, occurrence.shift.start)).map((entry) => entry.field))
+    const messages = await state.allFor(occurrence.shift.eventId, occurrence.shift.start)
+    const recorded = new Set(messages.map(entry => entry.field))
     for (const sheet of occurrence.sheets) {
-        if (recorded.has(`staff:${sheet.sheetId}`)) {
+        if (recorded.has(`staff:${sheet.sheetId}`) && !refresh) {
             notified.push(sheet.name)
             continue
         }
@@ -256,6 +275,16 @@ export async function letStaffIn(
                 )
             })
 
+        if (occurrence.shift.imageUrl) embed.setImage(occurrence.shift.imageUrl)
+        if (refresh) {
+            const posted = messages.find(entry => entry.field === `staff:${sheet.sheetId}`)
+            if (posted) {
+                const message = await channel.messages.fetch(posted.messageId)
+                await message.edit({ embeds: [embed], allowedMentions: { parse: [] } })
+                notified.push(sheet.name)
+            }
+            continue
+        }
         try {
             const message = await channel.send({
                 // A real mention outside the embed, since Discord does not
@@ -328,4 +357,14 @@ export async function remindHost(client: Client, guild: Guild, shift: Shift): Pr
         log.error('announce', 'host reminder refused', error)
         return { ok: false, reason: 'bot_reason_discord_refused' }
     }
+}
+
+/** Update the posts already sent; editing a shift never sends fresh pings. */
+export async function refreshShiftMessages(client: Client, guild: Guild, occurrence: Occurrence) {
+    const shift = occurrence.shift
+    const posted = await state.allFor(shift.eventId, shift.start)
+    const code = await state.findCode(shift.eventId, shift.start)
+    if (posted.some(entry => entry.field === 'upcoming')) await announceUpcoming(client, guild, shift, true)
+    if (posted.some(entry => entry.field === 'announcement')) await announceStart(client, guild, shift, code, true)
+    if (posted.some(entry => entry.field.startsWith('staff:'))) await letStaffIn(client, guild, occurrence, code, true)
 }
