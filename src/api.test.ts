@@ -57,3 +57,8 @@ test('conditional manifests distinguish unchanged boards, closed rooms, and retr
     status = 503
     await expect(api.manifest('guild', 'W/"board"')).rejects.toBeInstanceOf(ApiError)
 })
+
+test('a successful plain-text edit result is recognized as saved',async()=>{
+ globalThis.fetch=(async()=>new Response('Success',{headers:{'content-type':'text/plain'}})) as unknown as typeof fetch
+ expect(await api.setNote('guild',{eventId:'event',occurrence:'2026-09-27T12:00:00Z',note:'Changed',ownerRobloxId:'123'})).toBe('Success')
+})

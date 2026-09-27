@@ -1,4 +1,4 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, DiscordAPIError, EmbedBuilder, type Client } from 'discord.js'
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, DiscordAPIError, EmbedBuilder, type Client, type MessageEditOptions } from 'discord.js'
 import type { Guild, Occurrence, Shift } from '../api'
 import { sendable } from '../discord/channels'
 import { colorOf, joinLink, mentionPerson, mentionRole, shiftUrl, timestamp } from '../discord/format'
@@ -39,12 +39,21 @@ function websiteButton(l: Localizer, guild: Guild, shift: Shift) {
  */
 export type AnnounceResult = { ok: true; channelId: string } | { ok: false; reason: ReasonKey }
 
+async function editExisting(channel: NonNullable<Awaited<ReturnType<typeof sendable>>>, id: string, payload: MessageEditOptions) {
+    try {
+        const message = await channel.messages.fetch(id)
+        await message.edit(payload)
+    } catch (error) {
+        // A deleted announcement has nothing to update; edits must not recreate it.
+        if (!(error instanceof DiscordAPIError && error.code === 10008)) throw error
+    }
+}
+
 /** "A shift is coming up." */
 export async function announceUpcoming(client: Client, guild: Guild, shift: Shift, refresh = false): Promise<AnnounceResult> {
-    const channel = await sendable(client, guild.config.announcementChannel)
-    if (!channel) return { ok: false, reason: 'bot_reason_no_announcement_channel' }
-
     const existing = await state.findNotice(shift.eventId, shift.start, 'upcoming')
+    const channel = await sendable(client, refresh && existing ? existing.channelId : guild.config.announcementChannel)
+    if (!channel) return { ok: false, reason: 'bot_reason_no_announcement_channel' }
     if (existing?.channelId === channel.id && !refresh) {
         try {
             await channel.messages.fetch(existing.messageId)
@@ -88,8 +97,7 @@ export async function announceUpcoming(client: Client, guild: Guild, shift: Shif
     if (shift.imageUrl) embed.setImage(shift.imageUrl)
     if (refresh) {
         if (!existing) return { ok: true, channelId: channel.id }
-        const message = await channel.messages.fetch(existing.messageId)
-        await message.edit({ embeds: [embed], components: [websiteButton(l, guild, shift)], allowedMentions: { parse: [] } })
+        await editExisting(channel, existing.messageId, { embeds: [embed], components: [websiteButton(l, guild, shift)], allowedMentions: { parse: [] } })
         return { ok: true, channelId: channel.id }
     }
 
@@ -128,7 +136,7 @@ export async function announceStart(
 ): Promise<AnnounceResult> {
     const existing = await state.findAnnouncement(shift.eventId, shift.start)
     if (existing && !refresh) return { ok: true, channelId: existing.channelId }
-    const channel = await sendable(client, guild.config.announcementChannel)
+    const channel = await sendable(client, refresh && existing ? existing.channelId : guild.config.announcementChannel)
     if (!channel) return { ok: false, reason: 'bot_reason_no_announcement_channel' }
 
     const l = voice(guild)
@@ -167,8 +175,7 @@ export async function announceStart(
     if (shift.imageUrl) embed.setImage(shift.imageUrl)
     if (refresh) {
         if (!existing) return { ok: true, channelId: channel.id }
-        const message = await channel.messages.fetch(existing.messageId)
-        await message.edit({ embeds: [embed], components: [websiteButton(l, guild, shift)], allowedMentions: { parse: [] } })
+        await editExisting(channel, existing.messageId, { embeds: [embed], components: [websiteButton(l, guild, shift)], allowedMentions: { parse: [] } })
         return { ok: true, channelId: channel.id }
     }
 
@@ -235,7 +242,8 @@ export async function letStaffIn(
             continue
         }
 
-        const channel = await sendable(client, sheet.discordChannel)
+        const posted = messages.find(entry => entry.field === `staff:${sheet.sheetId}`)
+        const channel = await sendable(client, refresh && posted ? posted.channelId : sheet.discordChannel)
         if (!channel) {
             skipped.push({ sheet: sheet.name, reason: 'bot_reason_cannot_post_in_channel' })
             continue
@@ -277,10 +285,8 @@ export async function letStaffIn(
 
         if (occurrence.shift.imageUrl) embed.setImage(occurrence.shift.imageUrl)
         if (refresh) {
-            const posted = messages.find(entry => entry.field === `staff:${sheet.sheetId}`)
             if (posted) {
-                const message = await channel.messages.fetch(posted.messageId)
-                await message.edit({ embeds: [embed], allowedMentions: { parse: [] } })
+                await editExisting(channel, posted.messageId, { embeds: [embed], allowedMentions: { parse: [] } })
                 notified.push(sheet.name)
             }
             continue
@@ -364,7 +370,10 @@ export async function refreshShiftMessages(client: Client, guild: Guild, occurre
     const shift = occurrence.shift
     const posted = await state.allFor(shift.eventId, shift.start)
     const code = await state.findCode(shift.eventId, shift.start)
-    if (posted.some(entry => entry.field === 'upcoming')) await announceUpcoming(client, guild, shift, true)
-    if (posted.some(entry => entry.field === 'announcement')) await announceStart(client, guild, shift, code, true)
-    if (posted.some(entry => entry.field.startsWith('staff:'))) await letStaffIn(client, guild, occurrence, code, true)
+    if (posted.some(entry => entry.field === 'upcoming') && !(await announceUpcoming(client, guild, shift, true)).ok) throw new Error('Could not update the upcoming announcement')
+    if (posted.some(entry => entry.field === 'announcement') && !(await announceStart(client, guild, shift, code, true)).ok) throw new Error('Could not update the start announcement')
+    if (posted.some(entry => entry.field.startsWith('staff:'))) {
+        const result = await letStaffIn(client, guild, occurrence, code, true)
+        if (result.skipped.some(item => item.reason !== 'bot_reason_nobody_signed_up')) throw new Error('Could not update staff announcements')
+    }
 }

@@ -97,3 +97,10 @@ test('a consumer can finish before Discord has created the deferred reply', asyn
     await (interaction as any).editReply({ content: 'done' })
     expect(attempts).toBe(2)
 })
+
+test('modal labels resolve text fields and native uploaded attachments',()=>{
+ const {interaction}=createInteraction({id:'123',token:'token',type:5,data:{custom_id:'edit',components:[{type:18,component:{type:4,custom_id:'note',value:'Changed'}},{type:18,component:{type:19,custom_id:'image',values:['image-id']}}],resolved:{attachments:{'image-id':{id:'image-id',filename:'shift.png',url:'https://cdn.discordapp.com/attachments/channel/message/shift.png'}}}}} as any,new REST())
+ if(!interaction.isModalSubmit())throw new Error('Expected modal')
+ expect(interaction.fields.getTextInputValue('note')).toBe('Changed')
+ expect(interaction.fields.getUploadedFiles('image')?.first()?.url).toBe('https://cdn.discordapp.com/attachments/channel/message/shift.png')
+})

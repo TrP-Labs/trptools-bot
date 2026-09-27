@@ -19,7 +19,7 @@ export const command: Command = {
         const l = voice(guild)
 
         // The shift being closed is the one that just ran, so `current` comes
-        // first; a host tidying up afterwards falls back to the next one.
+        // includes the wrap-up window and any room staff have kept open.
         const shift = await api.shift(guild.guildId, 'current')
 
         if (!shift) {
@@ -33,7 +33,7 @@ export const command: Command = {
         const polled = await postPoll(client, guild, shift)
         await state.untrackManifest(guild.guildId)
 
-        if (!cleared.failed) await api.staffAction(guild.guildId, shift, 'COMPLETE')
+        if (!cleared.failed && (!guild.config.pollsEnabled || !guild.config.pollChannel || polled)) await api.staffAction(guild.guildId, shift, 'COMPLETE')
 
         const considered = cleared.tracked - cleared.kept
         const where = cleared.blockedChannels.map((id) => `<#${id}>`).join(', ')
