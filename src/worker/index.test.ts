@@ -134,3 +134,17 @@ test('website sign-up changes require the sync secret and enter the queue', asyn
     expect((await worker.fetch(request('test-sync-token'), bindings, context)).status).toBe(202)
     expect(jobs).toEqual([{ kind: 'signup', change: JSON.parse(body), enqueuedAt: expect.any(Number) }])
 })
+
+
+test('the bot homepage sends visitors to the frontend while health stays machine-readable', async () => {
+    for (const method of ['GET', 'HEAD']) {
+        const response = await worker.fetch(new Request('https://bot.trptools.com/', { method }), bindings, context)
+        expect(response.status).toBe(302)
+        expect(response.headers.get('location')).toBe('https://trptools.com/bot')
+    }
+    const custom = await worker.fetch(new Request('https://bot.example/'), { ...bindings, FRONTEND_URL: 'https://site.example' }, context)
+    expect(custom.headers.get('location')).toBe('https://site.example/bot')
+    const health = await worker.fetch(new Request('https://bot.example/health'), bindings, context)
+    expect(health.status).toBe(200)
+    expect(await health.json() as { status: string }).toEqual({ status: 'ok' })
+})

@@ -109,10 +109,15 @@ function configured(bindings: BotEnv) {
 
 export default {
     async fetch(request: Request, bindings: WorkerEnv, ctx: ExecutionContext): Promise<Response> {
-        configured(bindings)
         const path = new URL(request.url).pathname
 
-        if (request.method === 'GET' && (path === '/' || path === '/health')) {
+        if ((request.method === 'GET' || request.method === 'HEAD') && path === '/') {
+            return Response.redirect(new URL('/bot', bindings.FRONTEND_URL || 'https://trptools.com').href, 302)
+        }
+
+        configured(bindings)
+
+        if (request.method === 'GET' && path === '/health') {
             return Response.json({ status: 'ok' })
         }
 
