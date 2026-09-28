@@ -38,3 +38,6 @@ The **Deploy Cloudflare Worker** GitHub workflow is manual and uses Cloudflare c
 2. Use `/ping` in Discord to check the running bot and API connection.
 
 Worker jobs use separate queues for maintenance and interactions; Upstash stores their shared state. MIT — see [LICENSE](./LICENSE).
+
+The Worker homepage redirects visitors to `/bot` on `FRONTEND_URL` (defaults to
+`https://trptools.com`). `/health` remains the JSON health endpoint.

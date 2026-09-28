@@ -3,6 +3,7 @@ export interface BotEnv {
     DISCORD_APP_ID: string
     DISCORD_BOT_TOKEN: string
     DISCORD_PUBLIC_KEY?: string
+    FRONTEND_URL?: string
     API_URL: string
     BOT_SERVICE_TOKEN: string
     UPSTASH_REDIS_REST_URL?: string
