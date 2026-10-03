@@ -23,8 +23,8 @@ import type { Guild } from '../api'
  * the code living on as copyable text in a public channel after the shift.
  * Absent means yes, which is how it always behaved.
  */
-export function showsJoinCode(code: string | null | undefined, guild: Guild): boolean {
-    return Boolean(code) && guild.config.announceJoinCode !== false
+export function showsJoinCode(code: string | null | undefined, guild: Guild, occurrenceOverride?: boolean | null): boolean {
+    return Boolean(code) && (occurrenceOverride ?? guild.config.announceJoinCode) !== false
 }
 
 /**

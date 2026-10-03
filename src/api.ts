@@ -128,6 +128,8 @@ export type Shift = {
     start: string
     end: string
     note: string
+    joinCode?: string | null
+    announceJoinCode?: boolean | null
     ownerRobloxId: string | null
     imageUrl?: string | null
     /** When the group's sign-up window opens, and whether it is open now. */
@@ -280,7 +282,7 @@ export const api = {
 
     setNote: (
         guildId: string,
-        body: { eventId: string; occurrence: string; note: string; ownerRobloxId: string | null; imageUrl?: string | null }
+        body: { eventId: string; occurrence: string; note: string; ownerRobloxId: string | null; imageUrl?: string | null; joinCode?: string | null; announceJoinCode?: boolean | null }
     ) => optional<string>(`${guildPath(guildId)}/note`, { method: 'PUT', body: JSON.stringify(body) }),
 
     staffAction: (guildId: string, shift: Shift, action: DueAction['action']) => request<string>('/bot/internal/staff-action', {

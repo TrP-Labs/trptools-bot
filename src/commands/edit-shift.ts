@@ -64,13 +64,31 @@ export const command: Command = {
             .setValue(shift.ownerRobloxId ?? '')
             .setPlaceholder(clamp(t('bot_edit_shift_owner_placeholder'), LIMIT.textInputPlaceholder))
 
+        const code = new TextInputBuilder()
+            .setCustomId('code')
+            .setLabel(clamp(t('bot_edit_shift_code_label'), LIMIT.textInputLabel))
+            .setStyle(TextInputStyle.Short)
+            .setMaxLength(12)
+            .setRequired(false)
+            .setValue(shift.joinCode ?? '')
+
+        const visibility = new TextInputBuilder()
+            .setCustomId('codeVisibility')
+            .setLabel(clamp(t('bot_edit_shift_code_visibility_label'), LIMIT.textInputLabel))
+            .setStyle(TextInputStyle.Short)
+            .setMaxLength(7)
+            .setRequired(false)
+            .setValue(shift.announceJoinCode == null ? '' : shift.announceJoinCode ? 'yes' : 'no')
+
         await interaction.showModal(
             new ModalBuilder()
                 .setCustomId(encodeEditShift(shift.eventId, shift.start))
                 .setTitle(clamp(t('bot_edit_shift_modal_title', { name: shift.name }), LIMIT.modalTitle))
                 .addComponents(
                     new ActionRowBuilder<TextInputBuilder>().addComponents(note),
-                    new ActionRowBuilder<TextInputBuilder>().addComponents(owner)
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(owner),
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(code),
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(visibility)
                 )
                 .addLabelComponents(new LabelBuilder().setLabel(clamp(t('bot_edit_shift_image_label'), LIMIT.textInputLabel)).setFileUploadComponent(
                     new FileUploadBuilder().setCustomId('image').setRequired(false).setMaxValues(1)

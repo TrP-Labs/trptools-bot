@@ -27,6 +27,13 @@ describe('showsJoinCode', () => {
         expect(showsJoinCode('ABC123', guildWith({ announceJoinCode: true }))).toBe(true)
     })
 
+    test('the occurrence overrides the group while null inherits it', () => {
+        expect(showsJoinCode('ABC123', guildWith({ announceJoinCode: true }), false)).toBe(false)
+        expect(showsJoinCode('ABC123', guildWith({ announceJoinCode: false }), true)).toBe(true)
+        expect(showsJoinCode('ABC123', guildWith({ announceJoinCode: false }), null)).toBe(false)
+        expect(showsJoinCode(null, guildWith({}), true)).toBe(false)
+    })
+
     test('there is nothing to show without a code', () => {
         expect(showsJoinCode(null, guildWith({ announceJoinCode: true }))).toBe(false)
         expect(showsJoinCode(undefined, guildWith({}))).toBe(false)
