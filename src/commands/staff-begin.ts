@@ -67,7 +67,7 @@ export const command: Command = {
 
         // A code given here is remembered, so `/begin` can reuse it minutes
         // later without the host retyping it — and mistyping it.
-        const code = interaction.options.getString('code')
+        const code = interaction.options.getString('code') ?? shift.joinCode ?? await state.findCode(shift.eventId, shift.start)
         if (code) await state.rememberCode(shift.eventId, shift.start, code)
 
         const result = await letStaffIn(client, guild, occurrence, code ?? undefined)
@@ -97,6 +97,10 @@ export const command: Command = {
         }
 
         const startsLater = new Date(shift.start).getTime() > Date.now()
+
+        if (result.skipped.every(entry => entry.reason === 'bot_reason_nobody_signed_up')) {
+            await api.staffAction(guild.guildId, shift, 'STAFF_START')
+        }
 
         await interaction.editReply({
             embeds: [

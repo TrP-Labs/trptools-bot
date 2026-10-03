@@ -56,7 +56,7 @@ async function carryOut(client: Client, action: DueAction, guild: Guild): Promis
             // Whatever code a host already gave for this occurrence. There
             // usually is not one this early, and the link still works without
             // it — it just opens the group's default server.
-            const code = await state.findCode(target.eventId, target.start)
+            const code = target.joinCode ?? await state.findCode(target.eventId, target.start)
             const result = await letStaffIn(client, guild, occurrence, code)
 
             // Nobody signed up is a fine outcome, not a failure to retry.
@@ -68,7 +68,7 @@ async function carryOut(client: Client, action: DueAction, guild: Guild): Promis
         }
 
         case 'BEGIN': {
-            const code = await state.findCode(target.eventId, target.start)
+            const code = target.joinCode ?? await state.findCode(target.eventId, target.start)
             const announced = await announceStart(client, guild, target, code)
 
             if (!announced.ok) {

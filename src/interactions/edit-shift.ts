@@ -21,6 +21,19 @@ export const handler: ComponentHandler = {
 
         const note = interaction.fields.getTextInputValue('note').trim()
         const owner = interaction.fields.getTextInputValue('owner').trim()
+        // Modals opened before a bot update may still have the previous fields.
+        const optionalInput = (name: string) => {
+            try { return interaction.fields.getTextInputValue(name).trim() }
+            catch { return undefined }
+        }
+        const code = optionalInput('code')
+        const visibility = optionalInput('codeVisibility')?.toLowerCase()
+
+        if ((code && !/^[a-zA-Z0-9]{4,12}$/.test(code)) ||
+            (visibility && !['yes', 'no', 'default'].includes(visibility))) {
+            await interaction.editReply({ embeds: [reply(l).error(l.text('bot_edit_shift_invalid_code'))] })
+            return
+        }
 
         // A non-numeric owner id would produce a join link that silently drops
         // the player into the public game instead of the shift's server.
@@ -38,6 +51,8 @@ export const handler: ComponentHandler = {
             occurrence: target.occurrence,
             note,
             ownerRobloxId: owner || null,
+            ...(code === undefined ? {} : { joinCode: code || null }),
+            ...(visibility === undefined ? {} : { announceJoinCode: visibility === 'yes' ? true : visibility === 'no' ? false : null }),
             ...(image ? { imageUrl: image.url } : {})
         })
 

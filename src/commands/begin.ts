@@ -56,7 +56,7 @@ export const command: Command = {
         // Falls back to whatever `/staff-begin` was given, so the host types
         // the code once per shift rather than once per command.
         const code =
-            interaction.options.getString('code') ?? (await state.findCode(shift.eventId, shift.start))
+            interaction.options.getString('code') ?? shift.joinCode ?? (await state.findCode(shift.eventId, shift.start))
 
         if (code) await state.rememberCode(shift.eventId, shift.start, code)
 

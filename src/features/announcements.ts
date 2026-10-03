@@ -141,7 +141,7 @@ export async function announceStart(
 
     const l = voice(guild)
     const link = joinLink(guild, shift, code)
-    const showCode = showsJoinCode(code, guild)
+    const showCode = showsJoinCode(code, guild, shift.announceJoinCode)
 
     const embed = new EmbedBuilder()
         .setColor(colorOf(shift.color))
@@ -369,8 +369,7 @@ export async function remindHost(client: Client, guild: Guild, shift: Shift): Pr
 export async function refreshShiftMessages(client: Client, guild: Guild, occurrence: Occurrence) {
     const shift = occurrence.shift
     const posted = await state.allFor(shift.eventId, shift.start)
-    const code = await state.findCode(shift.eventId, shift.start)
-    if (posted.some(entry => entry.field === 'upcoming') && !(await announceUpcoming(client, guild, shift, true)).ok) throw new Error('Could not update the upcoming announcement')
+    const code = shift.joinCode ?? await state.findCode(shift.eventId, shift.start)
     if (posted.some(entry => entry.field === 'announcement') && !(await announceStart(client, guild, shift, code, true)).ok) throw new Error('Could not update the start announcement')
     if (posted.some(entry => entry.field.startsWith('staff:'))) {
         const result = await letStaffIn(client, guild, occurrence, code, true)
