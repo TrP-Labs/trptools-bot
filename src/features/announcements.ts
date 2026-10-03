@@ -1,3 +1,4 @@
+import { encodeVote } from '../discord/ids'
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, DiscordAPIError, EmbedBuilder, type Client, type MessageEditOptions } from 'discord.js'
 import type { Guild, Occurrence, Shift } from '../api'
 import { sendable } from '../discord/channels'
@@ -22,13 +23,19 @@ import { StateUnavailableError, state } from '../state'
  * page with nothing on it for them. The sheets themselves say "sign up",
  * because that is what they are.
  */
-function websiteButton(l: Localizer, guild: Guild, shift: Shift) {
-    return new ActionRowBuilder<ButtonBuilder>().addComponents(
+function websiteButton(l: Localizer, guild: Guild, shift: Shift, voting = false) {
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
             .setStyle(ButtonStyle.Link)
             .setLabel(clamp(l.line('bot_common_view_on_the_website'), LIMIT.buttonLabel))
             .setURL(shiftUrl(guild, shift))
     )
+    if (voting && shift.onDemand) row.addComponents(
+        new ButtonBuilder().setStyle(ButtonStyle.Primary).setLabel(clamp(l.line('bot_demand_vote'), LIMIT.buttonLabel))
+            .setCustomId(encodeVote(shift.eventId, shift.start))
+            .setDisabled(shift.decision !== 'PENDING' || Date.now() < new Date(shift.voteOpensAt ?? shift.start).getTime() || Date.now() >= new Date(shift.decisionAt ?? shift.start).getTime())
+    )
+    return row
 }
 
 /**
@@ -85,7 +92,13 @@ export async function announceUpcoming(client: Client, guild: Guild, shift: Shif
                     // The group wrote these themselves, in whatever language
                     // they wrote them in. Nothing here translates them.
                     shift.description,
-                    shift.note
+                    shift.note,
+                    shift.onDemand ? l.text(shift.decision === 'FAILED' ? 'bot_demand_failed' : shift.decision === 'CONFIRMED' ? 'bot_demand_confirmed' : 'bot_demand_progress', {
+                        count: shift.voteCount ?? 0, minimum: shift.minimumVotes ?? 0,
+                        deadline: timestamp(shift.decisionAt ?? shift.start, 'F')
+                    }) : '',
+                    shift.voters?.length ? l.text('bot_demand_voters', { names: shift.voters.map(v => v.name).join(', ') }) : '',
+                    shift.withdrawnVoters?.length ? l.text('bot_demand_withdrawn', { names: shift.withdrawnVoters.map(v => v.name).join(', ') }) : ''
                 ]
                     .filter(Boolean)
                     .join('\n\n'),
@@ -97,7 +110,7 @@ export async function announceUpcoming(client: Client, guild: Guild, shift: Shif
     if (shift.imageUrl) embed.setImage(shift.imageUrl)
     if (refresh) {
         if (!existing) return { ok: true, channelId: channel.id }
-        await editExisting(channel, existing.messageId, { embeds: [embed], components: [websiteButton(l, guild, shift)], allowedMentions: { parse: [] } })
+        await editExisting(channel, existing.messageId, { embeds: [embed], components: [websiteButton(l, guild, shift, true)], allowedMentions: { parse: [] } })
         return { ok: true, channelId: channel.id }
     }
 
@@ -105,7 +118,7 @@ export async function announceUpcoming(client: Client, guild: Guild, shift: Shif
         const message = await channel.send({
             content: (pingsUpcoming(guild) ? mentionRole(guild.config.shiftPingRole) : '') || undefined,
             embeds: [embed],
-            components: [websiteButton(l, guild, shift)]
+            components: [websiteButton(l, guild, shift, true)]
         })
 
         await state.rememberNotice(shift.eventId, shift.start, 'upcoming', {
@@ -134,6 +147,7 @@ export async function announceStart(
     code?: string | null,
     refresh = false
 ): Promise<AnnounceResult> {
+    if (shift.decision === 'CANCELED' || shift.onDemand && !['SCHEDULED', 'CONFIRMED'].includes(shift.decision ?? 'PENDING')) return { ok: false, reason: 'bot_reason_demand_unconfirmed' }
     const existing = await state.findAnnouncement(shift.eventId, shift.start)
     if (existing && !refresh) return { ok: true, channelId: existing.channelId }
     const channel = await sendable(client, refresh && existing ? existing.channelId : guild.config.announcementChannel)
@@ -221,6 +235,7 @@ export async function letStaffIn(
     refresh = false
 ): Promise<{ notified: string[]; skipped: StaffSkip[] }> {
     const notified: string[] = []
+    if (occurrence.shift.decision === 'CANCELED' || occurrence.shift.onDemand && occurrence.shift.decision !== 'CONFIRMED') return { notified, skipped: [{ sheet: occurrence.shift.name, reason: 'bot_reason_demand_unconfirmed' }] }
     const skipped: StaffSkip[] = []
     const l = voice(guild)
     const link = joinLink(guild, occurrence.shift, code)
@@ -319,6 +334,7 @@ export async function letStaffIn(
 
 /** Reminds whoever hosts that a shift needs opening. */
 export async function remindHost(client: Client, guild: Guild, shift: Shift): Promise<AnnounceResult> {
+    if (shift.decision === 'CANCELED' || shift.onDemand && shift.decision !== 'CONFIRMED') return { ok: false, reason: 'bot_reason_demand_unconfirmed' }
     const existing = await state.findNotice(shift.eventId, shift.start, 'host')
     if (existing) return { ok: true, channelId: existing.channelId }
     const channel = await sendable(client, guild.config.hostChannel ?? guild.config.announcementChannel)
@@ -370,6 +386,7 @@ export async function refreshShiftMessages(client: Client, guild: Guild, occurre
     const shift = occurrence.shift
     const posted = await state.allFor(shift.eventId, shift.start)
     const code = shift.joinCode ?? await state.findCode(shift.eventId, shift.start)
+    if (posted.some(entry => entry.field === 'upcoming')) await announceUpcoming(client, guild, shift, true)
     if (posted.some(entry => entry.field === 'announcement') && !(await announceStart(client, guild, shift, code, true)).ok) throw new Error('Could not update the start announcement')
     if (posted.some(entry => entry.field.startsWith('staff:'))) {
         const result = await letStaffIn(client, guild, occurrence, code, true)

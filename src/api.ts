@@ -120,6 +120,15 @@ export type Sheet = {
 }
 
 export type Shift = {
+    instanceId?: string
+    onDemand?: boolean
+    decision?: string
+    voteCount?: number
+    minimumVotes?: number
+    decisionAt?: string
+    voteOpensAt?: string
+    voters?: Array<{ name: string }>
+    withdrawnVoters?: Array<{ name: string }>
     eventId: string
     name: string
     slug: string
@@ -245,6 +254,8 @@ async function optional404<T>(path: string): Promise<T | null> {
 const guildPath = (guildId: string) => `/bot/internal/guilds/${encodeURIComponent(guildId)}`
 
 export const api = {
+    vote: (guildId: string, body: { eventId: string; occurrence: string; discordUserId: string; name: string; attending: boolean }) =>
+        request<string>(`${guildPath(guildId)}/vote`, { method: 'POST', body: JSON.stringify(body) }),
     guilds: () => optional<Guild[]>('/bot/internal/guilds').then((value) => value ?? []),
     guildsStrict: () => request<Guild[]>('/bot/internal/guilds'),
     guildForGroup: (groupId: string) => optional404<Guild>(`/bot/internal/groups/${encodeURIComponent(groupId)}/guild`),

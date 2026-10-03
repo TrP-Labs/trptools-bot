@@ -176,5 +176,17 @@
 	"bot_status_nothing_running": "Nothing running now",
 	"bot_status_next": "Next: **{name}** {relative}",
 	"bot_status_nothing_scheduled": "Nothing scheduled",
-	"bot_edit_shift_image_label": "Announcement image"
+	"bot_edit_shift_image_label": "Announcement image",
+	"bot_demand_vote": "Sign up for this shift",
+	"bot_demand_withdraw": "Withdraw sign-up",
+	"bot_demand_progress": "{count} of {minimum} public sign-ups. Voting closes {deadline}.",
+	"bot_demand_failed": "This shift did not occur because it did not receive enough public sign-ups.",
+	"bot_demand_confirmed": "This on-demand shift is confirmed.",
+	"bot_demand_voters": "Signed up: {names}",
+	"bot_demand_withdrawn": "Withdrew: {names}",
+	"bot_demand_registered": "You signed up for this shift.",
+	"bot_demand_released": "You withdrew your public sign-up.",
+	"bot_demand_ineligible": "Voting is closed or you do not meet this shift’s requirements. A minimum Roblox rank requires linking your TrPTools account.",
+	"bot_demand_closed": "Voting is closed for this shift.",
+	"bot_reason_demand_unconfirmed": "this on-demand shift has not been confirmed"
 }

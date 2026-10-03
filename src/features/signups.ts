@@ -36,6 +36,10 @@ export type PostOutcome = {
  */
 export async function postSheets(client: Client, guild: Guild, shift: Shift, sheets: Sheet[]): Promise<PostOutcome> {
     const outcome: PostOutcome = { posted: [], skipped: [] }
+    if (shift.decision === 'CANCELED' || shift.onDemand && shift.decision !== 'CONFIRMED') {
+        outcome.skipped = sheets.map(sheet => ({ sheet, reason: 'bot_reason_demand_unconfirmed' }))
+        return outcome
+    }
 
     const recorded = new Map((await state.allFor(shift.eventId, shift.start)).map((entry) => [entry.field, entry]))
 

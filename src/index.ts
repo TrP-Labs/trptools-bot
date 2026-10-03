@@ -1,3 +1,4 @@
+import { handler as voteHandler } from './interactions/vote'
 import type { Interaction } from 'discord.js'
 import { Events } from 'discord.js'
 import { api } from './api'
@@ -17,7 +18,7 @@ import { assertEnv } from './env'
 const client = createClient()
 
 for (const command of commands) client.commands.set(command.data.name, command)
-client.components.push(signupHandler, editShiftHandler)
+client.components.push(signupHandler, editShiftHandler, voteHandler)
 
 /**
  * Answers an interaction that failed, whatever state it is in.

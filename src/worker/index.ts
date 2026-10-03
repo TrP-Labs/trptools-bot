@@ -1,3 +1,5 @@
+import { handler as vote } from '../interactions/vote'
+import { announceUpcoming } from '../features/announcements'
 import { verifyKey } from 'discord-interactions'
 import { api, ApiError, type DueAction } from '../api'
 import { commands } from '../commands'
@@ -62,7 +64,7 @@ async function runInteraction(raw: any, initiallyDeferred = false, inline?: Inli
                 return
             }
             if (interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) {
-                const handler = [signup, editShift].find((candidate) => candidate.matches(interaction.customId))
+                const handler = [signup, editShift, vote].find((candidate) => candidate.matches(interaction.customId))
                 if (handler) await handler.execute(interaction, client)
                 else await interaction.reply({ embeds: [reply(englishOnly).error(englishOnly.text('bot_common_unhandled'))], flags: 64 })
             }
@@ -92,6 +94,10 @@ async function sync(changes: SignupChange[], client: ReturnType<typeof createRes
     const change = changes[0]!
     const guild = await api.guildForGroup(change.groupId)
     if (!guild) return
+    if (changes.some(c => c.sheetId === 'public-votes')) {
+        const current = await api.occurrence(guild.guildId, change.eventId, change.occurrence)
+        if (current) await announceUpcoming(client, guild, current.shift, true)
+    }
     await state.withGuildLock(guild.guildId, () => refreshSheets(client, guild.guildId, change.eventId,
         change.occurrence, [...new Set(changes.map((item) => item.sheetId))], guild))
 }

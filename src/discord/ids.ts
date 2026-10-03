@@ -57,3 +57,14 @@ export function decodeEditShift(customId: string): { eventId: string; occurrence
 
     return { eventId, occurrence: new Date(time).toISOString() }
 }
+
+export const VOTE_PREFIX = 'shift-vote'
+export function encodeVote(eventId: string, occurrence: string, attending = true): string {
+    return [VOTE_PREFIX, eventId, new Date(occurrence).getTime(), attending ? 'yes' : 'no'].join(':')
+}
+export function decodeVote(customId: string) {
+    const [prefix, eventId, millis, answer, ...extra] = customId.split(':')
+    const time = Number(millis)
+    if (prefix !== VOTE_PREFIX || extra.length || !/^[0-9a-f-]{36}$/i.test(eventId ?? '') || !Number.isFinite(time) || !Number.isFinite(new Date(time).getTime()) || !['yes', 'no'].includes(answer ?? '')) return null
+    return { eventId: eventId!, occurrence: new Date(time).toISOString(), attending: answer === 'yes' }
+}

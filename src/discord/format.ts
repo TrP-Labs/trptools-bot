@@ -53,5 +53,5 @@ export function joinLink(guild: Guild, shift: Shift, code?: string | null): stri
 
 /** A shift's own page on the website. */
 export function shiftUrl(guild: Guild, shift: Shift): string {
-    return `${guild.siteUrl}/g/${guild.groupSlug}/shift/${shift.slug}`
+    return `${guild.siteUrl}/g/${guild.groupSlug}/shift/${shift.slug}/${new Date(shift.start).getTime()}`
 }
