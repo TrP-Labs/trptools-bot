@@ -55,3 +55,15 @@ describe('edit-shift custom ids', () => {
         expect(decodeSignup(encodeEditShift(target.eventId, target.occurrence))).toBeNull()
     })
 })
+
+test('public vote ids preserve the occurrence and withdrawal action within Discord limits', async () => {
+    const { encodeVote, decodeVote } = await import('./ids')
+    const eventId = '12345678-1234-1234-1234-123456789012', occurrence = '2026-10-10T18:00:00.123Z'
+    for (const attending of [true, false]) {
+        const id = encodeVote(eventId, occurrence, attending)
+        expect(id.length).toBeLessThanOrEqual(100)
+        expect(decodeVote(id)).toEqual({ eventId, occurrence, attending })
+    }
+    expect(decodeVote('shift-vote:bad:1:yes')).toBeNull()
+    expect(decodeVote(`shift-vote:${eventId}:1e100:yes`)).toBeNull()
+})

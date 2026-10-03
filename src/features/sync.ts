@@ -1,3 +1,5 @@
+import { api } from '../api'
+import { announceUpcoming } from './announcements'
 import type { Client } from 'discord.js'
 import { Redis } from 'ioredis'
 import { env } from '../env'
@@ -60,6 +62,11 @@ export function startSignupSync(client: Client) {
         if (!guildId) return
 
         try {
+            if (change.sheetId === 'public-votes') {
+                const [guild, current] = await Promise.all([api.guild(guildId), api.occurrence(guildId, change.eventId, change.occurrence)])
+                if (guild && current) await announceUpcoming(client, guild, current.shift, true)
+                return
+            }
             await refreshSheet(client, guildId, change.eventId, change.occurrence, change.sheetId)
         } catch (error) {
             log.error('sync', 'could not redraw a sheet', error)

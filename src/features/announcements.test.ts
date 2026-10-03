@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { DiscordAPIError, type Client } from 'discord.js'
 import type { Guild, Shift } from '../api'
 import { state } from '../state'
-import { announceUpcoming } from './announcements'
+import { announceUpcoming, announceStart, remindHost } from './announcements'
 
 test('a deleted upcoming post is sent again instead of being reported as announced', async () => {
     const findNotice = state.findNotice
@@ -68,4 +68,37 @@ test('editing a posted announcement updates its original channel without another
   const embed=edits[0].embeds[0].toJSON()
   expect(embed.description).toContain('Updated note');expect(embed.image.url).toBe(shift.imageUrl)
  }finally{state.findNotice=original}
+})
+
+
+test('public demand announcement uses one button, an exact dated link, and disables voting after a decision', async () => {
+    const find = state.findNotice, remember = state.rememberNotice
+    const sent: any[] = []
+    state.findNotice = async () => null
+    state.rememberNotice = async () => {}
+    const client = { channels: { fetch: async () => ({ id: 'channel', isSendable: () => true,
+        send: async (payload: any) => { sent.push(payload); return { id: 'notice' } } }) } } as unknown as Client
+    const guild = { guildId: 'guild', groupSlug: 'group', groupName: 'Group', siteUrl: 'https://example.com',
+        config: { announcementChannel: 'channel', languages: ['en'], pingUpcoming: false } } as Guild
+    const shift = { eventId: '12345678-1234-1234-1234-123456789012', slug: 'shift', name: 'Shift', description: '', note: '', color: '#4287f5',
+        start: new Date(Date.now() + 3600000).toISOString(), end: new Date(Date.now() + 7200000).toISOString(), onDemand: true,
+        decision: 'PENDING', voteOpensAt: new Date(Date.now() - 60000).toISOString(), decisionAt: new Date(Date.now() + 60000).toISOString(),
+        minimumVotes: 5, voteCount: 2, voters: [], withdrawnVoters: [], ownerRobloxId: null, signupsOpenAt: new Date().toISOString(), signupsOpen: false } as Shift
+    try {
+        await announceUpcoming(client, guild, shift)
+        const components = sent[0].components[0].toJSON().components
+        expect(components).toHaveLength(2)
+        expect(components.every((c: any) => c.type === 2)).toBe(true)
+        expect(components[0].url).toEndWith('/shift/shift/' + new Date(shift.start).getTime())
+        expect(components[1].custom_id).toStartWith('shift-vote:')
+        expect(components[1].disabled).toBe(false)
+        expect(sent[0].embeds[0].toJSON().description).toContain('2')
+        shift.decision = 'FAILED'
+        await announceUpcoming(client, guild, shift)
+        expect(sent[1].components[0].toJSON().components[1].disabled).toBe(true)
+        expect(sent[1].embeds[0].toJSON().description).toContain('did not')
+        expect((await announceStart(client, guild, shift)).ok).toBe(false)
+        expect((await remindHost(client, guild, shift)).ok).toBe(false)
+        expect(sent).toHaveLength(2)
+    } finally { state.findNotice = find; state.rememberNotice = remember }
 })
