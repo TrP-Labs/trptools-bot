@@ -32,6 +32,8 @@ Use `bunx wrangler secret put NAME` for each secret; `.dev.vars` supplies local 
 
 The **Deploy Cloudflare Worker** GitHub workflow is manual and uses Cloudflare credentials from its `production` environment. For Cloudflare Builds, use `bun install --frozen-lockfile` as the build command and `bun run worker:deploy` as the deploy command; create queues and configure Worker secrets first.
 
+Before the first build, set **`BUN_VERSION=1.4.2`** under **Settings → Build → Build Variables and Secrets** for this Worker (including preview builds if enabled), then retry the build. This is a build variable, not a Wrangler runtime variable. Cloudflare's automatic dependency install runs before the build command and does not read `.bun-version`; its default Bun 1.2.15 cannot parse this repository's version-3 lockfile. The [Cloudflare build image documentation](https://developers.cloudflare.com/workers/ci-cd/builds/build-image/) documents the `BUN_VERSION` override. Keep this value in sync with `.bun-version`, which pins GitHub Actions and Docker builds.
+
 ## Checks
 
 1. Run `bun run typecheck && bun run test && bun run worker:check`.
