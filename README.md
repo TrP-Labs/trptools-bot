@@ -43,3 +43,11 @@ Worker jobs use separate queues for maintenance and interactions; Upstash stores
 
 The Worker homepage redirects visitors to `/bot` on `FRONTEND_URL` (defaults to
 `https://trptools.com`). `/health` remains the JSON health endpoint.
+
+## Translations
+
+The bot ships English, Czech, German, French, Polish, Russian and Ukrainian.
+Edit the canonical catalogs in the sibling `Locales` checkout and run
+`node scripts/check.mjs` followed by `node scripts/sync.mjs` there. Commit
+the vendored `messages/` with the bot release. This works without Crowdin;
+`./scripts/pull-locales.sh` remains available to fetch committed catalogs.

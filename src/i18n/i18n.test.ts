@@ -108,6 +108,12 @@ describe('clamp', () => {
 })
 
 describe('the catalogue', () => {
+	for (const locale of ['cs', 'de', 'pl']) {
+		test(`${locale} renders translated messages instead of falling back to English`, () => {
+			const translated = localizer([locale]).line('bot_announce_upcoming_title');
+			expect(translated).not.toBe(localizer(['en']).line('bot_announce_upcoming_title'));
+		});
+	}
     test('carries no empty strings', () => {
         const empty = Object.entries(en).filter(([, value]) => value.trim().length === 0)
         expect(empty).toEqual([])
