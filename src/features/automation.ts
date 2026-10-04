@@ -142,13 +142,14 @@ export async function tick(client: Client) {
 
 /** Redraws any dispatch board that is currently up. */
 export async function refreshBoards(client: Client) {
-    const guilds = await api.guilds()
-    const enabled = guilds.filter((guild) => guild.config.manifestEnabled)
+    const enabled = await api.boardGuilds()
     const active = await state.trackedManifests(enabled.map((guild) => guild.guildId))
 
     for (const guild of enabled) {
         const tracked = active.get(guild.guildId)
-        if (tracked) await refreshBoard(client, guild, tracked)
+        if (!tracked || !boardRefreshDue(tracked.checkedAt, guild.manifestRefreshSeconds)) continue
+        const config = await api.guild(guild.guildId)
+        if (config) await refreshBoard(client, config, tracked)
     }
 }
 
@@ -186,20 +187,28 @@ export function startAutomation(client: Client) {
     log.info('automation', `checking for due actions every ${interval / 1000}s`)
 
     const run = async () => {
+        if (running) return
+        running = true
         try {
             await tick(client)
         } catch (error) {
             log.error('automation', 'tick failed', error)
+        } finally {
+            running = false
         }
     }
 
+    let running = false
+    let refreshing = false
     void run()
     const timer = setInterval(() => void run(), interval)
 
     // Boards redraw on their own clock, which groups set per guild; the
     // shortest configured refresh is a reasonable common tick.
     const boardTimer = setInterval(() => {
-        void refreshBoards(client).catch((error) => log.error('automation', 'board refresh failed', error))
+        if (refreshing) return
+        refreshing = true
+        void refreshBoards(client).catch((error) => log.error('automation', 'board refresh failed', error)).finally(() => { refreshing = false })
     }, 60_000)
 
     return () => {

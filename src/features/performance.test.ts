@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test'
 import type { Client, Interaction } from 'discord.js'
 import { api, type Guild, type Sheet, type Shift } from '../api'
 import { state } from '../state'
-import { refreshBoard } from './automation'
+import { refreshBoard, refreshBoards } from './automation'
 import { clearShiftMessages } from './completion'
 import { postSheets, refreshSheets } from './signups'
 import { handler as signup } from '../interactions/signup'
@@ -24,6 +24,14 @@ const guild = {
 const sheet = (id: string): Sheet => ({
     sheetId: id, rankNames: [], name: id, description: '', color: '#4287f5', discordChannel: 'c', discordPingRole: null,
     slots: [{ id: 'slot', name: 'Driver', description: '', capacity: 1, order: 0, signups: [] }]
+})
+
+test('gateway board ticks read full guilds only for tracked boards that are due', async () => {
+    api.guilds = async () => { throw new Error('Full guild enumeration is too expensive') }
+    api.boardGuilds = async () => [{ guildId: 'idle', manifestRefreshSeconds: 300 }, { guildId: 'not-due', manifestRefreshSeconds: 300 }]
+    state.trackedManifests = async () => new Map([['not-due', { eventId: shift.eventId, occurrence: shift.start, checkedAt: Date.now() }]])
+    api.guild = async () => { throw new Error('A board that is not due fetched its configuration') }
+    await refreshBoards({} as Client)
 })
 
 test('cleanup preserves failed deletions and treats only unknown messages as already gone', async () => {
