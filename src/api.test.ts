@@ -10,6 +10,17 @@ test('Retry-After accepts seconds and HTTP dates', () => {
     expect(retryAfterSeconds(null)).toBeNull()
 })
 
+test('API requests have a deadline and never forward service credentials on redirects', async () => {
+    globalThis.fetch = (async (_url: unknown, init: RequestInit) => {
+        expect(init.signal).toBeInstanceOf(AbortSignal)
+        expect(init.signal!.aborted).toBe(false)
+        expect(init.redirect).toBe('error')
+        return new Response('Not Found', { status: 404 })
+    }) as unknown as typeof fetch
+    await api.guild('test')
+    await api.manifest('test')
+})
+
 test('a rate-limited guild read is an error, not a missing guild', async () => {
     globalThis.fetch = (async () => new Response('Too Many Requests', {
         status: 429, headers: { 'Retry-After': '42' }

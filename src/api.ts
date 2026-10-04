@@ -201,6 +201,8 @@ export function retryAfterSeconds(value: string | null, now = Date.now()): numbe
 async function requestUntimed<T>(path: string, init: RequestInit = {}): Promise<T> {
     const response = await fetch(`${env.API_URL}${path}`, {
         ...init,
+        signal: init.signal ?? AbortSignal.timeout(15_000),
+        redirect: 'error',
         headers: {
             Authorization: `Bearer ${env.BOT_SERVICE_TOKEN}`,
             'Content-Type': 'application/json',
@@ -347,6 +349,8 @@ export const api = {
         path: `${guildPath(guildId)}/manifest`, method: 'GET'
     }, async () => {
         const response = await fetch(`${env.API_URL}${guildPath(guildId)}/manifest`, {
+            signal: AbortSignal.timeout(30_000),
+            redirect: 'error',
             headers: { Authorization: `Bearer ${env.BOT_SERVICE_TOKEN}`, ...(etag ? { 'If-None-Match': etag } : {}) }
         })
         if (response.status === 304) return { status: 'unchanged', etag }

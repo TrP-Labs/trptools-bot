@@ -28,8 +28,9 @@ export const command: Command = {
         await interaction.deferReply(EPHEMERAL)
 
         const l = voice(guild)
-        const shift = await api.shift(guild.guildId, 'next')
-        const live = await api.shift(guild.guildId, 'current')
+        const [shift, live] = await Promise.all([
+            api.shift(guild.guildId, 'next'), api.shift(guild.guildId, 'current')
+        ])
         const config = guild.config
 
         const channel = (t: Translate, id: string | null) => (id ? `<#${id}>` : `*${t('bot_common_not_set')}*`)
