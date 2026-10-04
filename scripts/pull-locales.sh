@@ -8,7 +8,7 @@
 # request.
 #
 # English is authored as JSONC upstream so its comments can carry context for
-# translators; every other language is written by Crowdin as plain JSON. Both
+# translators; target languages are authored directly as plain JSON. Both
 # go through the same stripper here — it is a no-op on a file with no comments,
 # and it is also what refuses a malformed one.
 #
@@ -60,7 +60,7 @@ fi
 
 pulled=()
 for locale in "${locales[@]}"; do
-	# bot.json first: that is what Crowdin writes, and for English it is the
+	# bot.json first: that is the canonical direct translation, and for English it is the
 	# generated twin of the .jsonc, so preferring it means one code path. The
 	# .jsonc fallback is for a language being drafted by hand upstream, before
 	# Crowdin has anything for it.
