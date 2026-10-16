@@ -198,11 +198,13 @@ export function retryAfterSeconds(value: string | null, now = Date.now()): numbe
     return Number.isNaN(date) ? null : Math.max(1, Math.ceil((date - now) / 1000))
 }
 
+// Workers rejects redirect: 'error'. Manual mode keeps credentials on this
+// origin; the status checks below reject redirects without following them.
 async function requestUntimed<T>(path: string, init: RequestInit = {}): Promise<T> {
     const response = await fetch(`${env.API_URL}${path}`, {
         ...init,
         signal: init.signal ?? AbortSignal.timeout(15_000),
-        redirect: 'error',
+        redirect: 'manual',
         headers: {
             Authorization: `Bearer ${env.BOT_SERVICE_TOKEN}`,
             'Content-Type': 'application/json',
@@ -350,7 +352,7 @@ export const api = {
     }, async () => {
         const response = await fetch(`${env.API_URL}${guildPath(guildId)}/manifest`, {
             signal: AbortSignal.timeout(30_000),
-            redirect: 'error',
+            redirect: 'manual',
             headers: { Authorization: `Bearer ${env.BOT_SERVICE_TOKEN}`, ...(etag ? { 'If-None-Match': etag } : {}) }
         })
         if (response.status === 304) return { status: 'unchanged', etag }

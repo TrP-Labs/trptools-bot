@@ -14,11 +14,34 @@ test('API requests have a deadline and never forward service credentials on redi
     globalThis.fetch = (async (_url: unknown, init: RequestInit) => {
         expect(init.signal).toBeInstanceOf(AbortSignal)
         expect(init.signal!.aborted).toBe(false)
-        expect(init.redirect).toBe('error')
+        expect(init.redirect).toBe('manual')
         return new Response('Not Found', { status: 404 })
     }) as unknown as typeof fetch
     await api.guild('test')
     await api.manifest('test')
+})
+
+test('API reads and manifests reject redirects without requesting the target', async () => {
+    for (const status of [301, 302, 303, 307, 308]) {
+        const calls: string[] = []
+        globalThis.fetch = (async (url: string, init: RequestInit) => {
+            calls.push(url)
+            if (init.redirect !== 'manual') throw new Error('Unsupported Worker redirect mode')
+            return new Response(null, { status, headers: { Location: 'https://other.example/secret' } })
+        }) as unknown as typeof fetch
+
+        for (const read of [() => api.guildStrict('test'), () => api.manifest('test'), () => api.dueStrict()]) {
+            try {
+                await read()
+                throw new Error('expected redirect rejection')
+            } catch (error) {
+                expect(error).toBeInstanceOf(ApiError)
+                expect((error as ApiError).status).toBe(status)
+            }
+        }
+        expect(calls).toHaveLength(3)
+        expect(calls.every(url => !url.startsWith('https://other.example'))).toBe(true)
+    }
 })
 
 test('a rate-limited guild read is an error, not a missing guild', async () => {
